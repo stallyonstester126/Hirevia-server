@@ -114,21 +114,34 @@ const sanitizeMetaFormat = format((info) => {
 })
 
 const consoleTransport = (): Array<ConsoleTransportInstance> => {
-    if (config.ENV === EApplicationEnvironment.DEVELOPMENT) {
-        return [
-            new transports.Console({
-                level: 'info',
-                format: format.combine(sanitizeMetaFormat(), format.timestamp(), logFormat)
-            })
-        ]
-    }
-    return []
+    return [
+        new transports.Console({
+            level: 'info',
+            format:
+                config.ENV === EApplicationEnvironment.DEVELOPMENT
+                    ? format.combine(sanitizeMetaFormat(), format.timestamp(), logFormat)
+                    : format.combine(sanitizeMetaFormat(), format.timestamp(), fileFormat)
+        })
+    ]
 }
 
 const fileTransport = (): Array<FileTransportInstance> => {
+    if (process.env.NODE_ENV === 'test') {
+        return []
+    }
+    const logDir = path.join(__dirname, '../', '../', 'logs')
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const fs = require('fs')
+        if (!fs.existsSync(logDir)) {
+            fs.mkdirSync(logDir, { recursive: true })
+        }
+    } catch {
+        // Ignored on read-only container filesystems
+    }
     return [
         new transports.File({
-            filename: path.join(__dirname, '../', '../', 'logs', `${config.ENV}.log`),
+            filename: path.join(logDir, `${config.ENV || 'app'}.log`),
             level: 'info',
             format: format.combine(sanitizeMetaFormat(), format.timestamp(), fileFormat)
         })

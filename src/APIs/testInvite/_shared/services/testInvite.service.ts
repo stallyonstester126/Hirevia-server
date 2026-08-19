@@ -207,7 +207,13 @@ export const completePublicTestByToken = async (
                         }
                     }
 
-                    const frontendBase = config.FRONTEND_URL || (config.CLIENT_URL ? config.CLIENT_URL.split(',')[0].trim() : 'http://localhost:3002')
+                    const clientOrigins = config.CLIENT_URL
+                        ? config.CLIENT_URL.split(',').map((u) => u.trim()).filter(Boolean)
+                        : []
+                    const frontendBase =
+                        (clientOrigins.length > 0 ? clientOrigins[0] : '') ||
+                        config.FRONTEND_URL ||
+                        'http://localhost:3002'
                     const interviewUrl = `${frontendBase}/interview/${interviewInvite.token}`
                     const candidateName = seeker.name || 'Candidate'
                     const jobTitle = job?.title || 'Open Role'

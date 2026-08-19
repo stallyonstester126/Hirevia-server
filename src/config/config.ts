@@ -2,26 +2,32 @@ import dotenvFlow from 'dotenv-flow'
 
 dotenvFlow.config()
 
+const clientUrl = process.env.CLIENT_URL || ''
+const adminUrl = process.env.ADMIN_URL || ''
+const frontendUrl = process.env.FRONTEND_URL || (clientUrl ? clientUrl.split(',')[0].trim() : 'http://localhost:3002')
+const corsOrigins = process.env.CORS_ORIGINS || [clientUrl, adminUrl, frontendUrl].filter(Boolean).join(',')
+
 export default {
     // General
-    ENV: process.env.ENV,
-    PORT: process.env.PORT,
-    SERVER_URL: process.env.SERVER_URL,
-    CLIENT_URL: process.env.CLIENT_URL,
-    ADMIN_URL: process.env.ADMIN_URL,
-    FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3002',
+    ENV: process.env.ENV || process.env.NODE_ENV || 'development',
+    PORT: process.env.PORT || 3000,
+    SERVER_URL: process.env.SERVER_URL || 'http://localhost:3000',
+    CLIENT_URL: clientUrl,
+    ADMIN_URL: adminUrl,
+    FRONTEND_URL: frontendUrl,
+    CORS_ORIGINS: corsOrigins,
 
     // Database
     DATABASE_URL: process.env.DATABASE_URL,
 
-    //Email
+    // Email
     EMAIL_API_KEY: process.env.EMAIL_SERVICE_API_KEY || process.env.BREVO_API_KEY,
     BREVO_API_KEY: process.env.BREVO_API_KEY || process.env.EMAIL_SERVICE_API_KEY,
     EMAIL_FROM: process.env.EMAIL_FROM || 'Hirevia <stallyons.tester125@gmail.com>',
     EMAIL_SENDER_NAME: process.env.EMAIL_SENDER_NAME || 'Hirevia',
     EMAIL_SENDER_ADDRESS: process.env.EMAIL_SENDER_ADDRESS || 'stallyons.tester125@gmail.com',
 
-    //Tokens
+    // Tokens
     TOKENS: {
         ACCESS: {
             SECRET: process.env.ACCESS_TOKEN_SECRET as string,
@@ -54,5 +60,3 @@ export default {
     VAPI_ASSISTANT_ID: process.env.VAPI_ASSISTANT_ID || 'b93d37b4-9e62-4d96-a916-ce0e3d357e73',
     VAPI_WEBHOOK_SECRET: process.env.VAPI_WEBHOOK_SECRET || ''
 }
-
-

@@ -144,7 +144,13 @@ export const processAutoScreening = async (applicationId: string): Promise<void>
                         }
                     }
 
-                    const frontendBaseUrl = config.FRONTEND_URL || config.CLIENT_URL || 'http://localhost:3002'
+                    const clientOrigins = config.CLIENT_URL
+                        ? config.CLIENT_URL.split(',').map((u) => u.trim()).filter(Boolean)
+                        : []
+                    const frontendBaseUrl =
+                        (clientOrigins.length > 0 ? clientOrigins[0] : '') ||
+                        config.FRONTEND_URL ||
+                        'http://localhost:3002'
                     const testUrl = `${frontendBaseUrl}/test/${testInvite.token}`
                     const emailTemplate = getTestInviteEmailTemplate({
                         candidateName: seeker.name || 'Candidate',

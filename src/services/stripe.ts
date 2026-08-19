@@ -8,10 +8,12 @@ export const stripe = new Stripe(stripeSecret, {
 
 export default {
     createCheckoutSession: async (jobId: string, companyEmail: string, successUrl?: string, cancelUrl?: string) => {
-        const clientOrigins = config.CLIENT_URL ? config.CLIENT_URL.split(',') : []
+        const clientOrigins = config.CLIENT_URL
+            ? config.CLIENT_URL.split(',').map((u) => u.trim()).filter(Boolean)
+            : []
         const fallbackUrl =
+            (clientOrigins.length > 0 ? clientOrigins[0] : '') ||
             config.FRONTEND_URL ||
-            (clientOrigins.length > 1 ? clientOrigins[1].trim() : clientOrigins[0]?.trim()) ||
             'http://localhost:3002'
         const success = successUrl || `${fallbackUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`
         const cancel = cancelUrl || `${fallbackUrl}/payment/cancel`

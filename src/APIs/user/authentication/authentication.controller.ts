@@ -66,7 +66,9 @@ export default {
             const isLoggedIn = await loginService(payload)
             if (isLoggedIn.success === true) {
                 //sending cookies
-                const isProd = config.ENV === EApplicationEnvironment.PRODUCTION
+                const isProd =
+                    config.ENV === EApplicationEnvironment.PRODUCTION ||
+                    process.env.NODE_ENV === 'production'
                 const cookieOptions = {
                     path: '/',
                     sameSite: isProd ? ('none' as const) : ('lax' as const),
@@ -104,7 +106,9 @@ export default {
                 await query.deleteToken(refreshToken)
             }
 
-            const isProd = config.ENV === EApplicationEnvironment.PRODUCTION
+            const isProd =
+                config.ENV === EApplicationEnvironment.PRODUCTION ||
+                process.env.NODE_ENV === 'production'
             const cookieOptions = {
                 path: '/',
                 sameSite: isProd ? ('none' as const) : ('lax' as const),

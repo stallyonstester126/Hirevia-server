@@ -1,0 +1,9 @@
+export enum EApplicationStatus {
+    SUBMITTED = 'SUBMITTED',
+    UNDER_REVIEW = 'UNDER_REVIEW',
+    SHORTLISTED = 'SHORTLISTED',
+    INTERVIEW = 'INTERVIEW',
+    REJECTED = 'REJECTED',
+    HIRED = 'HIRED',
+    WITHDRAWN = 'WITHDRAWN'
+}

@@ -62,8 +62,8 @@ export const deleteJob = async (companyId: string, jobId: string) => {
         throw new CustomError('Job not found', 404)
     }
 
-    if (job.status !== EJobStatus.DRAFT) {
-        throw new CustomError('Only draft jobs can be deleted', 400)
+    if (job.status === EJobStatus.PUBLISHED) {
+        throw new CustomError('Active published jobs must be closed before they can be deleted', 400)
     }
 
     await jobRepository.delete(jobId)
@@ -89,6 +89,10 @@ export const publishJob = async (companyId: string, jobId: string) => {
     const job = await jobRepository.findById(jobId)
     if (!job || job.companyId.toString() !== companyId.toString()) {
         throw new CustomError('Job not found', 404)
+    }
+
+    if (job.status === EJobStatus.PUBLISHED) {
+        throw new CustomError('Job is already published', 400)
     }
 
     const user = await userRepository.findUserById(companyId)

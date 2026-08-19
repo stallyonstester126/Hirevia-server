@@ -104,7 +104,7 @@ describe('Job Service', () => {
     })
 
     describe('deleteJob', () => {
-        it('should allow deletion if job status is DRAFT', async () => {
+        it('should allow deletion if job status is DRAFT or CLOSED', async () => {
             ;(jobRepository.findById as jest.Mock).mockResolvedValue(mockJob)
             ;(jobRepository.delete as jest.Mock).mockResolvedValue({ success: true })
 
@@ -113,14 +113,14 @@ describe('Job Service', () => {
             expect(jobRepository.delete).toHaveBeenCalledWith('job123')
         })
 
-        it('should throw 400 CustomError if job status is not DRAFT', async () => {
+        it('should throw 400 CustomError if job status is PUBLISHED', async () => {
             ;(jobRepository.findById as jest.Mock).mockResolvedValue({
                 ...mockJob,
                 status: EJobStatus.PUBLISHED
             })
 
             await expect(deleteJob(mockCompanyId, 'job123')).rejects.toThrow(
-                new CustomError('Only draft jobs can be deleted', 400)
+                new CustomError('Active published jobs must be closed before they can be deleted', 400)
             )
         })
     })

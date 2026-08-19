@@ -11,7 +11,8 @@ export default {
     createSubscriptionCheckout: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
         try {
             const req = request as IAuthenticateRequest
-            const companyId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const rawId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const companyId = rawId ? rawId.toString() : ''
             const companyEmail = (req.authenticatedUser as any).email
             const { successUrl, cancelUrl } = request.body || {}
 
@@ -34,7 +35,8 @@ export default {
     getSubscriptionStatus: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
         try {
             const req = request as IAuthenticateRequest
-            const companyId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const rawId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const companyId = rawId ? rawId.toString() : ''
 
             const result = await paymentService.getCompanySubscriptionStatus(companyId)
             httpResponse(response, request, 200, responseMessage.SUCCESS, result)
@@ -50,7 +52,8 @@ export default {
     createCheckout: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
         try {
             const req = request as IAuthenticateRequest
-            const companyId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const rawId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const companyId = rawId ? rawId.toString() : ''
             const companyEmail = (req.authenticatedUser as any).email
             const { jobId } = req.params
 

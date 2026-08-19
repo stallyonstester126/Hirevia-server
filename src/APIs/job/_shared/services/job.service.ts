@@ -11,11 +11,18 @@ export const createJob = async (companyId: string, data: Partial<IJob>) => {
     const user = await userRepository.findUserById(companyId)
     const isSubscribed = user?.subscriptionStatus === 'PAID'
 
+    if (!isSubscribed) {
+        throw new CustomError(
+            'Company membership is required to post jobs. Please activate your company membership ($10 one-time) for unlimited job postings.',
+            400
+        )
+    }
+
     const payload: IJob = {
         ...jobData,
         companyId,
-        status: EJobStatus.DRAFT,
-        paymentStatus: isSubscribed ? EPaymentStatus.PAID : EPaymentStatus.UNPAID
+        status: EJobStatus.PUBLISHED,
+        paymentStatus: EPaymentStatus.PAID
     }
 
     return jobRepository.create(payload)

@@ -28,6 +28,10 @@ export default {
         const success = successUrl || `${fallbackUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`
         const cancel = cancelUrl || `${fallbackUrl}/payment/cancel`
 
+        const companyIdStr = typeof companyId === 'object' && companyId !== null
+            ? (companyId as any)._id ? (companyId as any)._id.toString() : (companyId as any).toString()
+            : String(companyId)
+
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             mode: 'payment',
@@ -46,7 +50,7 @@ export default {
                 }
             ],
             metadata: {
-                companyId,
+                companyId: companyIdStr,
                 type: 'SUBSCRIPTION'
             },
             success_url: success,
@@ -67,8 +71,14 @@ export default {
         const success = successUrl || `${fallbackUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`
         const cancel = cancelUrl || `${fallbackUrl}/payment/cancel`
 
-        const metadata: Record<string, string> = { jobId, type: 'JOB_POSTING' }
-        if (companyId) metadata.companyId = companyId
+        const jobIdStr = typeof jobId === 'object' && jobId !== null ? (jobId as any).toString() : String(jobId)
+        const metadata: Record<string, string> = { jobId: jobIdStr, type: 'JOB_POSTING' }
+        if (companyId) {
+            const companyIdStr = typeof companyId === 'object' && companyId !== null
+                ? (companyId as any)._id ? (companyId as any)._id.toString() : (companyId as any).toString()
+                : String(companyId)
+            metadata.companyId = companyIdStr
+        }
 
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],

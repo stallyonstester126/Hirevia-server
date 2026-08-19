@@ -31,18 +31,38 @@ describe('Job Service', () => {
     })
 
     describe('createJob', () => {
-        it('should create a job as DRAFT and UNPAID, deriving companyId from parameter', async () => {
-            ;(jobRepository.create as jest.Mock).mockResolvedValue(mockJob)
+        it('should reject job creation if company does not have an active paid membership', async () => {
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                _id: mockCompanyId,
+                subscriptionStatus: 'UNPAID'
+            })
 
-            const data = { title: 'Node Developer', description: 'Excellent Node position', companyId: 'maliciousOverride', paymentStatus: EPaymentStatus.PAID } as any
+            const data = { title: 'Node Developer', description: 'Excellent Node position' } as any
+            await expect(createJob(mockCompanyId, data)).rejects.toThrow(
+                'Company membership is required to post jobs'
+            )
+        })
+
+        it('should create and auto-publish job as PUBLISHED and PAID for subscribed companies', async () => {
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                _id: mockCompanyId,
+                subscriptionStatus: 'PAID'
+            })
+            ;(jobRepository.create as jest.Mock).mockResolvedValue({
+                ...mockJob,
+                status: EJobStatus.PUBLISHED,
+                paymentStatus: EPaymentStatus.PAID
+            })
+
+            const data = { title: 'Node Developer', description: 'Excellent Node position', companyId: 'maliciousOverride' } as any
             const result = await createJob(mockCompanyId, data)
 
-            expect(result).toEqual(mockJob)
+            expect(result).toBeDefined()
             expect(jobRepository.create).toHaveBeenCalledWith(
                 expect.objectContaining({
                     companyId: mockCompanyId,
-                    status: EJobStatus.DRAFT,
-                    paymentStatus: EPaymentStatus.UNPAID
+                    status: EJobStatus.PUBLISHED,
+                    paymentStatus: EPaymentStatus.PAID
                 })
             )
         })

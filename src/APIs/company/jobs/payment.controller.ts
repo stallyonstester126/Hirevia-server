@@ -8,6 +8,45 @@ import * as paymentService from '../_shared/services/payment.service'
 import asyncHandler from '../../../handlers/async'
 
 export default {
+    createSubscriptionCheckout: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
+        try {
+            const req = request as IAuthenticateRequest
+            const companyId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const companyEmail = (req.authenticatedUser as any).email
+            const { successUrl, cancelUrl } = request.body || {}
+
+            const result = await paymentService.createCompanySubscriptionCheckout(
+                companyId,
+                companyEmail,
+                successUrl,
+                cancelUrl
+            )
+            httpResponse(response, request, 201, responseMessage.SUCCESS, result)
+        } catch (error) {
+            if (error instanceof CustomError) {
+                httpError(next, error, request, error.statusCode)
+            } else {
+                httpError(next, error, request, 500)
+            }
+        }
+    }),
+
+    getSubscriptionStatus: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
+        try {
+            const req = request as IAuthenticateRequest
+            const companyId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+
+            const result = await paymentService.getCompanySubscriptionStatus(companyId)
+            httpResponse(response, request, 200, responseMessage.SUCCESS, result)
+        } catch (error) {
+            if (error instanceof CustomError) {
+                httpError(next, error, request, error.statusCode)
+            } else {
+                httpError(next, error, request, 500)
+            }
+        }
+    }),
+
     createCheckout: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
         try {
             const req = request as IAuthenticateRequest
@@ -25,6 +64,7 @@ export default {
             }
         }
     }),
+
     getPaymentStatus: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
         try {
             const req = request as IAuthenticateRequest
@@ -41,6 +81,7 @@ export default {
             }
         }
     }),
+
     confirmSession: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
         try {
             const req = request as IAuthenticateRequest

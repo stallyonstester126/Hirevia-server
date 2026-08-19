@@ -9,6 +9,20 @@ import rateLimiter from '../../../middlewares/rateLimiter'
 
 const router = Router()
 
+// Subscription Routes
+router
+    .route('/subscription/checkout')
+    .post(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), paymentController.createSubscriptionCheckout)
+
+router
+    .route('/subscription/status')
+    .get(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), paymentController.getSubscriptionStatus)
+
+router
+    .route('/confirm-payment')
+    .post(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), paymentController.confirmSession)
+    .get(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), paymentController.confirmSession)
+
 router
     .route('/')
     .post(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), companyJobsController.createJob)
@@ -31,11 +45,6 @@ router
 router
     .route('/:jobId/applications')
     .get(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), companyApplicationsController.getJobApplications)
-
-router
-    .route('/confirm-payment')
-    .post(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), paymentController.confirmSession)
-    .get(rateLimiter, authenticate, authorize(EUserRoles.COMPANY), paymentController.confirmSession)
 
 router
     .route('/:jobId/checkout')

@@ -99,6 +99,15 @@ const userSchema = new mongoose.Schema<IUser>(
         suspensionReason: {
             type: String,
             default: null
+        },
+        subscriptionStatus: {
+            type: String,
+            enum: ['UNPAID', 'PAID'],
+            default: 'UNPAID'
+        },
+        subscriptionPaidAt: {
+            type: Date,
+            default: null
         }
     },
     { timestamps: true }

@@ -1,10 +1,12 @@
 import { createJob, getCompanyJobs, getCompanyJobById, updateJob, deleteJob, closeJob, publishJob, getPublicJobs, getPublicJobById } from '../../APIs/job/_shared/services/job.service'
 import jobRepository from '../../APIs/job/_shared/repo/job.repository'
+import userRepository from '../../APIs/user/_shared/repo/user.repository'
 import { CustomError } from '../../utils/errors'
 import { EEmploymentType, EExperienceLevel, EJobStatus, EPaymentStatus, EWorkplaceType } from '../../constant/jobs'
 import { IJob } from '../../APIs/job/_shared/types/job.interface'
 
 jest.mock('../../APIs/job/_shared/repo/job.repository')
+jest.mock('../../APIs/user/_shared/repo/user.repository')
 
 describe('Job Service', () => {
     const mockCompanyId = 'company123'
@@ -148,25 +150,37 @@ describe('Job Service', () => {
     })
 
     describe('publishJob', () => {
-        it('should throw 400 CustomError if job paymentStatus is UNPAID', async () => {
-            ;(jobRepository.findById as jest.Mock).mockResolvedValue(mockJob) // status=DRAFT, paymentStatus=UNPAID
+        it('should throw 400 CustomError if company subscription is UNPAID and job is UNPAID', async () => {
+            ;(jobRepository.findById as jest.Mock).mockResolvedValue(mockJob)
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                _id: mockCompanyId,
+                subscriptionStatus: 'UNPAID'
+            })
 
             await expect(publishJob(mockCompanyId, 'job123')).rejects.toThrow(
-                new CustomError('Cannot publish unpaid job. Payment is required', 400)
+                new CustomError(
+                    'Company membership is required to publish jobs. Please activate your company membership ($10 one-time) for unlimited job postings.',
+                    400
+                )
             )
         })
 
-        it('should publish successfully if paymentStatus is PAID', async () => {
+        it('should publish successfully if company subscription is PAID', async () => {
             const mockSave = jest.fn()
-            const paidJob = {
+            const draftJob = {
                 ...mockJob,
-                paymentStatus: EPaymentStatus.PAID,
+                paymentStatus: EPaymentStatus.UNPAID,
                 save: mockSave
             }
-            ;(jobRepository.findById as jest.Mock).mockResolvedValue(paidJob)
+            ;(jobRepository.findById as jest.Mock).mockResolvedValue(draftJob)
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                _id: mockCompanyId,
+                subscriptionStatus: 'PAID'
+            })
 
             const result = await publishJob(mockCompanyId, 'job123')
             expect(result.status).toBe(EJobStatus.PUBLISHED)
+            expect(result.paymentStatus).toBe(EPaymentStatus.PAID)
             expect(mockSave).toHaveBeenCalled()
         })
     })

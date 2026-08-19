@@ -28,6 +28,8 @@ export interface IUser {
     isSuspended?: boolean
     suspendedAt?: Date | null
     suspensionReason?: string | null
+    subscriptionStatus?: 'UNPAID' | 'PAID'
+    subscriptionPaidAt?: Date | null
 }
 
 export interface IUserWithId extends IUser {

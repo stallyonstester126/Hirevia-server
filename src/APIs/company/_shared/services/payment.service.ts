@@ -1,9 +1,61 @@
 import jobRepository from '../../../job/_shared/repo/job.repository'
 import paymentRepository from '../repo/payment.repository'
+import userRepository from '../../../user/_shared/repo/user.repository'
 import stripeService from '../../../../services/stripe'
 import { CustomError } from '../../../../utils/errors'
 import { IPayment } from '../types/payment.interface'
 import { EJobStatus, EPaymentStatus } from '../../../../constant/jobs'
+
+export const createCompanySubscriptionCheckout = async (
+    companyId: string,
+    companyEmail: string,
+    successUrl?: string,
+    cancelUrl?: string
+) => {
+    const user = await userRepository.findUserById(companyId)
+    if (!user) {
+        throw new CustomError('Company user not found', 404)
+    }
+
+    if (user.subscriptionStatus === 'PAID') {
+        throw new CustomError('Company membership is already active with unlimited job postings', 400)
+    }
+
+    const session = await stripeService.createSubscriptionCheckoutSession(
+        companyId,
+        companyEmail,
+        successUrl,
+        cancelUrl
+    )
+
+    const payload: IPayment = {
+        companyId,
+        stripeSessionId: session.id,
+        amount: 1000, // $10.00 USD
+        currency: 'usd',
+        status: 'PENDING',
+        type: 'SUBSCRIPTION'
+    }
+
+    await paymentRepository.create(payload)
+
+    return {
+        checkoutUrl: session.url,
+        sessionId: session.id
+    }
+}
+
+export const getCompanySubscriptionStatus = async (companyId: string) => {
+    const user = await userRepository.findUserById(companyId)
+    if (!user) {
+        throw new CustomError('Company user not found', 404)
+    }
+
+    return {
+        subscriptionStatus: user.subscriptionStatus || 'UNPAID',
+        subscriptionPaidAt: user.subscriptionPaidAt || null
+    }
+}
 
 export const createJobCheckoutSession = async (
     companyId: string,
@@ -12,6 +64,16 @@ export const createJobCheckoutSession = async (
     successUrl?: string,
     cancelUrl?: string
 ) => {
+    const user = await userRepository.findUserById(companyId)
+    if (user && user.subscriptionStatus === 'PAID') {
+        const job = await jobRepository.findById(jobId)
+        if (job) {
+            job.paymentStatus = EPaymentStatus.PAID
+            await job.save()
+        }
+        throw new CustomError('Company has an active unlimited membership. This job is already unlocked for publishing.', 400)
+    }
+
     const job = await jobRepository.findById(jobId)
     if (!job || job.companyId.toString() !== companyId.toString()) {
         throw new CustomError('Job not found', 404)
@@ -31,7 +93,6 @@ export const createJobCheckoutSession = async (
             throw new CustomError('Job is already paid', 400)
         }
 
-        // Auto-reconcile: check if the pending session was already paid on Stripe
         if (existingPayment.stripeSessionId) {
             try {
                 const session = await stripeService.retrieveSession(existingPayment.stripeSessionId)
@@ -43,7 +104,13 @@ export const createJobCheckoutSession = async (
 
                     job.paymentStatus = EPaymentStatus.PAID
                     await job.save()
-                    throw new CustomError('Job payment was already completed. You can now publish this job', 400)
+
+                    if (user) {
+                        user.subscriptionStatus = 'PAID'
+                        user.subscriptionPaidAt = new Date()
+                        await user.save()
+                    }
+                    throw new CustomError('Payment was already completed. You can now publish this job', 400)
                 } else if (session && session.status === 'open' && session.url) {
                     return {
                         checkoutUrl: session.url
@@ -57,15 +124,16 @@ export const createJobCheckoutSession = async (
         throw new CustomError('Checkout session is already pending for this job', 409)
     }
 
-    const session = await stripeService.createCheckoutSession(jobId, companyEmail, successUrl, cancelUrl)
+    const session = await stripeService.createSubscriptionCheckoutSession(companyId, companyEmail, successUrl, cancelUrl)
 
     const payload: IPayment = {
         jobId,
         companyId,
         stripeSessionId: session.id,
-        amount: 1000, // $10.00 USD in cents
+        amount: 1000,
         currency: 'usd',
-        status: 'PENDING'
+        status: 'PENDING',
+        type: 'SUBSCRIPTION'
     }
 
     await paymentRepository.create(payload)
@@ -97,6 +165,13 @@ export const getJobPaymentStatus = async (companyId: string, jobId: string) => {
                     job.paymentStatus = EPaymentStatus.PAID
                     await job.save()
                 }
+
+                const user = await userRepository.findUserById(companyId)
+                if (user && user.subscriptionStatus !== 'PAID') {
+                    user.subscriptionStatus = 'PAID'
+                    user.subscriptionPaidAt = new Date()
+                    await user.save()
+                }
             }
         } catch {
             // Ignore Stripe retrieve errors
@@ -115,10 +190,7 @@ export const confirmSessionPayment = async (companyId: string, sessionId: string
         throw new CustomError('Payment record not found', 404)
     }
 
-    const job = await jobRepository.findById(payment.jobId.toString())
-    if (!job || job.companyId.toString() !== companyId.toString()) {
-        throw new CustomError('Job not found', 404)
-    }
+    const user = await userRepository.findUserById(companyId)
 
     try {
         const session = await stripeService.retrieveSession(sessionId)
@@ -130,20 +202,41 @@ export const confirmSessionPayment = async (companyId: string, sessionId: string
                 await payment.save()
             }
 
-            if (job.paymentStatus !== EPaymentStatus.PAID) {
-                job.paymentStatus = EPaymentStatus.PAID
-                await job.save()
+            if (user && user.subscriptionStatus !== 'PAID') {
+                user.subscriptionStatus = 'PAID'
+                user.subscriptionPaidAt = new Date()
+                await user.save()
+            }
+
+            if (payment.jobId) {
+                const job = await jobRepository.findById(payment.jobId.toString())
+                if (job && job.paymentStatus !== EPaymentStatus.PAID) {
+                    job.paymentStatus = EPaymentStatus.PAID
+                    await job.save()
+                }
             }
         }
     } catch {
-        // Fallback: If session lookup failed but user was redirected, we can still return current state
+        // Fallback
+    }
+
+    let jobData: any = null
+    if (payment.jobId) {
+        const job = await jobRepository.findById(payment.jobId.toString())
+        if (job) {
+            jobData = {
+                jobId: (job as any)._id?.toString() || job.id,
+                jobTitle: job.title,
+                status: job.status,
+                paymentStatus: job.paymentStatus
+            }
+        }
     }
 
     return {
-        jobId: (job as any)._id?.toString() || job.id,
-        jobTitle: job.title,
-        status: job.status,
-        paymentStatus: job.paymentStatus,
+        type: payment.type || 'SUBSCRIPTION',
+        subscriptionStatus: user?.subscriptionStatus || 'PAID',
+        ...jobData,
         payment
     }
 }

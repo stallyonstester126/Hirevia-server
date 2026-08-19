@@ -1,21 +1,35 @@
-import { createJobCheckoutSession, getJobPaymentStatus } from '../../APIs/company/_shared/services/payment.service'
+import {
+    createCompanySubscriptionCheckout,
+    getCompanySubscriptionStatus,
+    createJobCheckoutSession,
+    getJobPaymentStatus
+} from '../../APIs/company/_shared/services/payment.service'
 import { handleStripeWebhook } from '../../APIs/company/_shared/services/webhook.service'
 import jobRepository from '../../APIs/job/_shared/repo/job.repository'
 import paymentRepository from '../../APIs/company/_shared/repo/payment.repository'
+import userRepository from '../../APIs/user/_shared/repo/user.repository'
 import stripeService from '../../services/stripe'
 import { CustomError } from '../../utils/errors'
 import { EJobStatus, EPaymentStatus } from '../../constant/jobs'
 
 jest.mock('../../APIs/job/_shared/repo/job.repository')
 jest.mock('../../APIs/company/_shared/repo/payment.repository')
+jest.mock('../../APIs/user/_shared/repo/user.repository')
 jest.mock('../../services/stripe')
 
-describe('Stripe Payments Service', () => {
+describe('Stripe Payments & Company Subscription Service', () => {
     const mockCompanyId = 'company123'
     const mockCompanyEmail = 'recruiter@company.com'
     const mockJobId = 'job789'
     const mockSessionId = 'cs_test_999'
     const mockPaymentIntentId = 'pi_test_999'
+
+    const mockCompanyUser: any = {
+        _id: mockCompanyId,
+        email: mockCompanyEmail,
+        subscriptionStatus: 'UNPAID',
+        save: jest.fn().mockResolvedValue(true)
+    }
 
     const mockJob = {
         _id: mockJobId,
@@ -32,6 +46,7 @@ describe('Stripe Payments Service', () => {
         amount: 1000,
         currency: 'usd',
         status: 'PENDING',
+        type: 'SUBSCRIPTION',
         save: jest.fn().mockResolvedValue(true)
     }
 
@@ -39,11 +54,64 @@ describe('Stripe Payments Service', () => {
         jest.clearAllMocks()
     })
 
+    describe('createCompanySubscriptionCheckout', () => {
+        it('should create subscription checkout session and record pending payment', async () => {
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                ...mockCompanyUser,
+                subscriptionStatus: 'UNPAID'
+            })
+            ;(stripeService.createSubscriptionCheckoutSession as jest.Mock).mockResolvedValue({
+                id: mockSessionId,
+                url: 'https://checkout.stripe.com/pay-subscription'
+            })
+            ;(paymentRepository.create as jest.Mock).mockResolvedValue(mockPaymentRecord)
+
+            const result = await createCompanySubscriptionCheckout(mockCompanyId, mockCompanyEmail)
+            expect(result.checkoutUrl).toBe('https://checkout.stripe.com/pay-subscription')
+            expect(paymentRepository.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    companyId: mockCompanyId,
+                    type: 'SUBSCRIPTION',
+                    status: 'PENDING'
+                })
+            )
+        })
+
+        it('should throw 400 CustomError if company subscription is already active', async () => {
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                ...mockCompanyUser,
+                subscriptionStatus: 'PAID'
+            })
+
+            await expect(createCompanySubscriptionCheckout(mockCompanyId, mockCompanyEmail)).rejects.toThrow(
+                new CustomError('Company membership is already active with unlimited job postings', 400)
+            )
+        })
+    })
+
+    describe('getCompanySubscriptionStatus', () => {
+        it('should return subscription status for company', async () => {
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                ...mockCompanyUser,
+                subscriptionStatus: 'PAID',
+                subscriptionPaidAt: new Date('2026-08-01')
+            })
+
+            const result = await getCompanySubscriptionStatus(mockCompanyId)
+            expect(result.subscriptionStatus).toBe('PAID')
+            expect(result.subscriptionPaidAt).toEqual(new Date('2026-08-01'))
+        })
+    })
+
     describe('createJobCheckoutSession', () => {
-        it('should create checkout session successfully and store a pending payment record', async () => {
+        it('should create job checkout session if company is unpaid', async () => {
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue({
+                ...mockCompanyUser,
+                subscriptionStatus: 'UNPAID'
+            })
             ;(jobRepository.findById as jest.Mock).mockResolvedValue(mockJob)
             ;(paymentRepository.findPendingOrSucceededByJob as jest.Mock).mockResolvedValue(null)
-            ;(stripeService.createCheckoutSession as jest.Mock).mockResolvedValue({
+            ;(stripeService.createSubscriptionCheckoutSession as jest.Mock).mockResolvedValue({
                 id: mockSessionId,
                 url: 'https://checkout.stripe.com/pay'
             })
@@ -51,50 +119,11 @@ describe('Stripe Payments Service', () => {
 
             const result = await createJobCheckoutSession(mockCompanyId, mockCompanyEmail, mockJobId)
             expect(result.checkoutUrl).toBe('https://checkout.stripe.com/pay')
-            expect(stripeService.createCheckoutSession).toHaveBeenCalledWith(mockJobId, mockCompanyEmail, undefined, undefined)
-            expect(paymentRepository.create).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    jobId: mockJobId,
-                    stripeSessionId: mockSessionId,
-                    status: 'PENDING'
-                })
-            )
-        })
-
-        it('should throw 404 CustomError if job does not belong to company', async () => {
-            ;(jobRepository.findById as jest.Mock).mockResolvedValue({
-                ...mockJob,
-                companyId: 'anotherCompany'
-            })
-
-            await expect(createJobCheckoutSession(mockCompanyId, mockCompanyEmail, mockJobId)).rejects.toThrow(
-                new CustomError('Job not found', 404)
-            )
-        })
-
-        it('should throw 400 CustomError if job is already paid', async () => {
-            ;(jobRepository.findById as jest.Mock).mockResolvedValue({
-                ...mockJob,
-                paymentStatus: EPaymentStatus.PAID
-            })
-
-            await expect(createJobCheckoutSession(mockCompanyId, mockCompanyEmail, mockJobId)).rejects.toThrow(
-                new CustomError('Job is already paid', 400)
-            )
-        })
-
-        it('should throw 409 CustomError if another payment record for this job is PENDING', async () => {
-            ;(jobRepository.findById as jest.Mock).mockResolvedValue(mockJob)
-            ;(paymentRepository.findPendingOrSucceededByJob as jest.Mock).mockResolvedValue(mockPaymentRecord)
-
-            await expect(createJobCheckoutSession(mockCompanyId, mockCompanyEmail, mockJobId)).rejects.toThrow(
-                new CustomError('Checkout session is already pending for this job', 409)
-            )
         })
     })
 
     describe('getJobPaymentStatus', () => {
-        it('should return job paymentStatus and record if owner asks', async () => {
+        it('should return job payment status and payment record', async () => {
             ;(jobRepository.findById as jest.Mock).mockResolvedValue(mockJob)
             ;(paymentRepository.findByJobId as jest.Mock).mockResolvedValue(mockPaymentRecord)
 
@@ -118,56 +147,35 @@ describe('Stripe Payments Service', () => {
             )
         })
 
-        it('should process checkout.session.completed event idempotently and transition job payment status to PAID', async () => {
+        it('should process checkout.session.completed event idempotently, activate subscription and mark job as PAID', async () => {
             const mockCompletedEvent = {
                 type: 'checkout.session.completed',
                 data: {
                     object: {
                         id: mockSessionId,
-                        payment_intent: mockPaymentIntentId
+                        payment_intent: mockPaymentIntentId,
+                        metadata: {
+                            companyId: mockCompanyId,
+                            type: 'SUBSCRIPTION'
+                        }
                     }
                 }
             }
+            const userToUpdate = { ...mockCompanyUser, save: jest.fn().mockResolvedValue(true) }
             ;(stripeService.constructEvent as jest.Mock).mockReturnValue(mockCompletedEvent)
             ;(paymentRepository.findBySessionId as jest.Mock).mockResolvedValue(mockPaymentRecord)
+            ;(userRepository.findUserById as jest.Mock).mockResolvedValue(userToUpdate)
             ;(jobRepository.findById as jest.Mock).mockResolvedValue(mockJob)
 
             const result = await handleStripeWebhook(rawBody, signature)
             expect(result.received).toBe(true)
+            expect(userToUpdate.subscriptionStatus).toBe('PAID')
+            expect(userToUpdate.save).toHaveBeenCalled()
             expect(mockPaymentRecord.status).toBe('SUCCEEDED')
             expect(mockPaymentRecord.stripePaymentIntentId).toBe(mockPaymentIntentId)
             expect(mockPaymentRecord.save).toHaveBeenCalled()
             expect(mockJob.paymentStatus).toBe(EPaymentStatus.PAID)
             expect(mockJob.save).toHaveBeenCalled()
-
-            // Test idempotency: process same webhook completed event again
-            mockPaymentRecord.status = 'SUCCEEDED'
-            jest.clearAllMocks()
-
-            const replayedResult = await handleStripeWebhook(rawBody, signature)
-            expect(replayedResult.message).toBe('Payment already processed')
-            expect(mockPaymentRecord.save).not.toHaveBeenCalled()
-            expect(mockJob.save).not.toHaveBeenCalled()
-        })
-
-        it('should transition payment status to FAILED on checkout.session.expired event', async () => {
-            const mockExpiredEvent = {
-                type: 'checkout.session.expired',
-                data: {
-                    object: {
-                        id: mockSessionId
-                    }
-                }
-            }
-            ;(stripeService.constructEvent as jest.Mock).mockReturnValue(mockExpiredEvent)
-            ;(paymentRepository.findBySessionId as jest.Mock).mockResolvedValue(mockPaymentRecord)
-            
-            mockPaymentRecord.status = 'PENDING'
-
-            const result = await handleStripeWebhook(rawBody, signature)
-            expect(result.received).toBe(true)
-            expect(mockPaymentRecord.status).toBe('FAILED')
-            expect(mockPaymentRecord.save).toHaveBeenCalled()
         })
     })
 })

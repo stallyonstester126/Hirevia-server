@@ -1,4 +1,5 @@
 import jobRepository from '../repo/job.repository'
+import userRepository from '../../../user/_shared/repo/user.repository'
 import { IJob } from '../types/job.interface'
 import { CustomError } from '../../../../utils/errors'
 import { EJobStatus, EPaymentStatus } from '../../../../constant/jobs'
@@ -7,11 +8,14 @@ export const createJob = async (companyId: string, data: Partial<IJob>) => {
     // Strip client-supplied protected fields
     const { companyId: _, status: __, paymentStatus: ___, ...jobData } = data as any
 
+    const user = await userRepository.findUserById(companyId)
+    const isSubscribed = user?.subscriptionStatus === 'PAID'
+
     const payload: IJob = {
         ...jobData,
         companyId,
         status: EJobStatus.DRAFT,
-        paymentStatus: EPaymentStatus.UNPAID
+        paymentStatus: isSubscribed ? EPaymentStatus.PAID : EPaymentStatus.UNPAID
     }
 
     return jobRepository.create(payload)
@@ -87,8 +91,19 @@ export const publishJob = async (companyId: string, jobId: string) => {
         throw new CustomError('Job not found', 404)
     }
 
-    if (job.paymentStatus !== EPaymentStatus.PAID) {
-        throw new CustomError('Cannot publish unpaid job. Payment is required', 400)
+    const user = await userRepository.findUserById(companyId)
+    const isSubscribed = user?.subscriptionStatus === 'PAID'
+    const isJobPaid = job.paymentStatus === EPaymentStatus.PAID
+
+    if (!isSubscribed && !isJobPaid) {
+        throw new CustomError(
+            'Company membership is required to publish jobs. Please activate your company membership ($10 one-time) for unlimited job postings.',
+            400
+        )
+    }
+
+    if (isSubscribed && job.paymentStatus !== EPaymentStatus.PAID) {
+        job.paymentStatus = EPaymentStatus.PAID
     }
 
     job.status = EJobStatus.PUBLISHED
@@ -163,6 +178,5 @@ export const getPublicJobById = async (jobId: string) => {
         throw new CustomError('Job not found', 404)
     }
 
-    // Expose only seeker-facing attributes if needed, but returning standard job is default
     return job
 }

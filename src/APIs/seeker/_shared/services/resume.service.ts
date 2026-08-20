@@ -4,6 +4,8 @@ import StorageService from '../../../../services/storage'
 import { IResume } from '../types/resume.interface'
 import { CustomError } from '../../../../utils/errors'
 import applicationModel from '../../../application/_shared/models/application.model'
+import extractText from '../../../../utils/textExtractor'
+import logger from '../../../../handlers/logger'
 
 export const uploadResume = async (seekerId: string, file: Express.Multer.File) => {
     // Determine version number
@@ -18,6 +20,16 @@ export const uploadResume = async (seekerId: string, file: Express.Multer.File) 
 
     try {
         const ext = path.extname(file.originalname).toLowerCase()
+
+        let extractedText = ''
+        try {
+            extractedText = await extractText(file.buffer, ext)
+        } catch (extractErr) {
+            logger.warn('Text extraction during upload failed:', { meta: extractErr })
+        }
+
+        const fileData = file.buffer ? file.buffer.toString('base64') : ''
+
         const payload: IResume = {
             seekerId,
             originalFileName: file.originalname,
@@ -26,7 +38,9 @@ export const uploadResume = async (seekerId: string, file: Express.Multer.File) 
             fileSize: file.size,
             fileExtension: ext,
             version: nextVersion,
-            isActive: true
+            isActive: true,
+            extractedText,
+            fileData
         }
 
         const resume = await resumeRepository.create(payload)
@@ -56,7 +70,16 @@ export const getResume = async (seekerId: string, resumeId: string) => {
 
 export const getResumeFile = async (seekerId: string, resumeId: string) => {
     const resume = await getResume(seekerId, resumeId)
-    const fileBuffer = await StorageService.get(resume.storageKey, 'resumes')
+    let fileBuffer: Buffer
+    try {
+        fileBuffer = await StorageService.get(resume.storageKey, 'resumes')
+    } catch (storageErr) {
+        if ((resume as any).fileData) {
+            fileBuffer = Buffer.from((resume as any).fileData, 'base64')
+        } else {
+            throw storageErr
+        }
+    }
 
     return {
         fileBuffer,

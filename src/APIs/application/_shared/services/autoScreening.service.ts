@@ -1,6 +1,7 @@
 import applicationRepository from '../repo/application.repository'
 import jobRepository from '../../../job/_shared/repo/job.repository'
 import resumeRepository from '../../../seeker/_shared/repo/resume.repository'
+import seekerProfileRepository from '../../../seeker/_shared/repo/seekerProfile.repository'
 import cvAnalysisRepository from '../../../seeker/_shared/repo/cvAnalysis.repository'
 import jobMatchScoreRepository from '../repo/jobMatchScore.repository'
 import userQuery from '../../../user/_shared/repo/user.repository'
@@ -54,13 +55,47 @@ export const processAutoScreening = async (applicationId: string): Promise<void>
             return
         }
 
-        // 1. Extract resume text
-        const fileBuffer = await StorageService.get(resume.storageKey, 'resumes')
-        const rawText = await extractText(fileBuffer, resume.fileExtension)
-
         const resumeIdStr = (resume as any)._id ? (resume as any)._id.toString() : `${resume._id}`
         const jobIdStr = (job as any)._id ? (job as any)._id.toString() : `${job._id}`
         const seekerIdStr = (application as any).seekerId ? (application as any).seekerId.toString() : `${application.seekerId}`
+
+        // 1. Extract resume text with resilient fallback hierarchy
+        let rawText = (resume as any).extractedText || ''
+        if (!rawText) {
+            try {
+                const fileBuffer = await StorageService.get(resume.storageKey, 'resumes')
+                rawText = await extractText(fileBuffer, resume.fileExtension)
+            } catch (storageErr) {
+                logger.warn(`[AutoScreening] Storage file read failed for resume ${resumeIdStr}: ${storageErr}`)
+                if ((resume as any).fileData) {
+                    try {
+                        const fileBuffer = Buffer.from((resume as any).fileData, 'base64')
+                        rawText = await extractText(fileBuffer, resume.fileExtension)
+                    } catch (decodeErr) {
+                        logger.warn(`[AutoScreening] Base64 fallback extraction failed: ${decodeErr}`)
+                    }
+                }
+            }
+        }
+
+        // If rawText is still empty (e.g. legacy upload on wiped disk), synthesize from candidate profile as final fallback
+        if (!rawText) {
+            try {
+                const seekerProfile = await seekerProfileRepository.findByUserId(seekerIdStr)
+                if (seekerProfile) {
+                    const skillsList = (seekerProfile.skills || []).join(', ')
+                    const expList = (seekerProfile.experience || []).map((e: any) => `${e.position || ''} at ${e.company || ''} (${e.description || ''})`).join('\n')
+                    const eduList = (seekerProfile.education || []).map((e: any) => `${e.degree || ''} from ${e.institution || ''}`).join('\n')
+                    rawText = `Candidate Profile:\nHeadline: ${seekerProfile.headline || ''}\nBio: ${seekerProfile.bio || ''}\nSkills: ${skillsList}\nExperience:\n${expList}\nEducation:\n${eduList}`
+                }
+            } catch (profileErr) {
+                logger.warn(`[AutoScreening] Seeker profile fallback lookup failed for ${seekerIdStr}:`, { meta: profileErr })
+            }
+        }
+
+        if (!rawText) {
+            rawText = `Applicant for ${job.title} - Candidate ID: ${seekerIdStr}`
+        }
 
         // 2. Ensure CV Analysis is present
         let analysis = await cvAnalysisRepository.findByResumeId(resumeIdStr)

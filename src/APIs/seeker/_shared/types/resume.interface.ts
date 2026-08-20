@@ -9,6 +9,8 @@ export interface IResume {
     fileExtension: string
     version: number
     isActive: boolean
+    extractedText?: string
+    fileData?: string
 }
 
 export interface IResumeDocument extends IResume, Document {

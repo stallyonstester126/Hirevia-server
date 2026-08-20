@@ -329,8 +329,41 @@ export const matchCompanyApplicationJob = async (companyId: string, applicationI
         throw new CustomError('Resume not found', 404)
     }
 
-    const fileBuffer = await StorageService.get(resume.storageKey, 'resumes')
-    const rawText = await extractText(fileBuffer, resume.fileExtension)
+    let rawText = (resume as any).extractedText || ''
+    if (!rawText) {
+        try {
+            const fileBuffer = await StorageService.get(resume.storageKey, 'resumes')
+            rawText = await extractText(fileBuffer, resume.fileExtension)
+        } catch (storageErr) {
+            logger.warn(`[JobMatch] Storage file read failed for resume ${resume._id}: ${storageErr}`)
+            if ((resume as any).fileData) {
+                try {
+                    const fileBuffer = Buffer.from((resume as any).fileData, 'base64')
+                    rawText = await extractText(fileBuffer, resume.fileExtension)
+                } catch (decodeErr) {
+                    logger.warn(`[JobMatch] Base64 fallback extraction failed: ${decodeErr}`)
+                }
+            }
+        }
+    }
+
+    if (!rawText) {
+        try {
+            const seekerProfile = await seekerProfileRepository.findByUserId(application.seekerId.toString())
+            if (seekerProfile) {
+                const skillsList = (seekerProfile.skills || []).join(', ')
+                const expList = (seekerProfile.experience || []).map((e: any) => `${e.position || ''} at ${e.company || ''} (${e.description || ''})`).join('\n')
+                const eduList = (seekerProfile.education || []).map((e: any) => `${e.degree || ''} from ${e.institution || ''}`).join('\n')
+                rawText = `Candidate Profile:\nHeadline: ${seekerProfile.headline || ''}\nBio: ${seekerProfile.bio || ''}\nSkills: ${skillsList}\nExperience:\n${expList}\nEducation:\n${eduList}`
+            }
+        } catch (profileErr) {
+            logger.warn(`[JobMatch] Seeker profile fallback lookup failed:`, { meta: profileErr })
+        }
+    }
+
+    if (!rawText) {
+        rawText = `Applicant for ${job.title}`
+    }
 
     const jobDetails = `Job Title: ${job.title}\nDescription: ${job.description}\nRequirements: ${(job.requirements || []).join(', ')}`
 

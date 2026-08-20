@@ -41,6 +41,16 @@ const resumeSchema = new Schema<IResumeDocument>(
             type: Boolean,
             required: true,
             default: true
+        },
+        extractedText: {
+            type: String,
+            required: false,
+            default: ''
+        },
+        fileData: {
+            type: String,
+            required: false,
+            default: ''
         }
     },
     { timestamps: true }

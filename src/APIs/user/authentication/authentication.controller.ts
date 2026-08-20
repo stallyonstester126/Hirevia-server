@@ -176,7 +176,7 @@ export default {
                     maxAge: 1000 * config.TOKENS.REFRESH.EXPIRY
                 })
 
-            const destination = `${config.FRONTEND_URL}${result.redirectPath}`
+            const destination = `${config.FRONTEND_URL}${result.redirectPath}?token=${result.accessToken}`
             return response.redirect(destination)
         } catch (authError: any) {
             const message = authError.message || 'Google authentication failed'

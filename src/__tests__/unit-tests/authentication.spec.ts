@@ -1,4 +1,4 @@
-import { accountConfirmationService, loginService, registrationService } from '../../APIs/user/authentication/authentication.service'
+import { accountConfirmationService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService } from '../../APIs/user/authentication/authentication.service'
 import query from '../../APIs/user/_shared/repo/user.repository'
 import validate from '../../APIs/user/authentication/validation/validations'
 import emailService from '../../services/email'
@@ -12,6 +12,7 @@ import { IRegisterRequest } from '../../APIs/user/authentication/types/authentic
 import jwt from '../../utils/jwt'
 import tokenRepository from '../../APIs/user/_shared/repo/token.repository'
 import { EUserRoles } from '../../constant/users'
+import config from '../../config/config'
 
 jest.mock('../../APIs/user/_shared/repo/user.repository')
 jest.mock('../../services/email', () => ({
@@ -186,5 +187,141 @@ describe('accountConfirmationService', () => {
             expect.stringContaining('Welcome to Hirevia!'),
             expect.stringContaining('Account Confirmed!')
         )
+    })
+})
+
+describe('googleAuthServices', () => {
+    beforeAll(() => {
+        config.GOOGLE_CLIENT_ID = 'test-google-client-id'
+        config.GOOGLE_CLIENT_SECRET = 'test-google-client-secret'
+        config.GOOGLE_CALLBACK_URL = 'http://localhost:3000/v1/auth/google/callback'
+    })
+
+    afterEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('googleAuthInitiateService should generate a valid Google OAuth consent URL', () => {
+        const url = googleAuthInitiateService(EUserRoles.SEEKER, '/seeker')
+        expect(url).toContain('https://accounts.google.com/o/oauth2/v2/auth')
+        expect(url).toContain('client_id=test-google-client-id')
+        expect(url).toContain('redirect_uri=http%3A%2F%2Flocalhost%3A3000%2Fv1%2Fauth%2Fgoogle%2Fcallback')
+        expect(url).toContain('response_type=code')
+        expect(url).toContain('scope=')
+    })
+
+    it('googleAuthCallbackService should exchange code, fetch profile, link existing user, and issue tokens', async () => {
+        // Mock global fetch for token exchange and userinfo
+        const originalFetch = global.fetch
+        global.fetch = jest.fn()
+            .mockImplementationOnce(async () => ({
+                ok: true,
+                json: async () => ({ access_token: 'google_mock_access_token' })
+            }))
+            .mockImplementationOnce(async () => ({
+                ok: true,
+                json: async () => ({
+                    sub: 'google-sub-123',
+                    email: 'existing.google@example.com',
+                    email_verified: true,
+                    name: 'Existing Google User',
+                    picture: 'https://lh3.googleusercontent.com/photo.jpg'
+                })
+            })) as any
+
+        const mockExistingUser = {
+            _id: 'user_123',
+            name: 'Existing Google User',
+            email: 'existing.google@example.com',
+            role: EUserRoles.SEEKER,
+            googleId: null,
+            authProvider: 'local',
+            accountConfimation: { status: true },
+            save: jest.fn().mockResolvedValue(true),
+            toObject: jest.fn().mockReturnValue({
+                _id: 'user_123',
+                name: 'Existing Google User',
+                email: 'existing.google@example.com',
+                role: EUserRoles.SEEKER
+            })
+        }
+
+        ;(query.findUserByGoogleId as jest.Mock).mockResolvedValue(null)
+        ;(query.findUserByEmail as jest.Mock).mockResolvedValue(mockExistingUser)
+        ;(jwt.generateToken as jest.Mock)
+            .mockReturnValueOnce('mock_access_jwt')
+            .mockReturnValueOnce('mock_refresh_jwt')
+        ;(tokenRepository.createToken as jest.Mock).mockResolvedValue({ token: 'mock_refresh_jwt' })
+
+        const result = await googleAuthCallbackService('valid_auth_code')
+
+        expect(result.success).toBe(true)
+        expect(result.accessToken).toBe('mock_access_jwt')
+        expect(result.refreshToken).toBe('mock_refresh_jwt')
+        expect(result.redirectPath).toBe('/seeker')
+        expect(mockExistingUser.googleId).toBe('google-sub-123')
+        expect(mockExistingUser.authProvider).toBe('google')
+        expect(mockExistingUser.save).toHaveBeenCalled()
+
+        global.fetch = originalFetch
+    })
+
+    it('googleAuthCallbackService should create a new user when no account matches email or googleId', async () => {
+        const originalFetch = global.fetch
+        global.fetch = jest.fn()
+            .mockImplementationOnce(async () => ({
+                ok: true,
+                json: async () => ({ access_token: 'google_mock_access_token_2' })
+            }))
+            .mockImplementationOnce(async () => ({
+                ok: true,
+                json: async () => ({
+                    sub: 'google-new-sub-456',
+                    email: 'brandnew.user@example.com',
+                    email_verified: true,
+                    name: 'Brand New User',
+                    picture: 'https://lh3.googleusercontent.com/new.jpg'
+                })
+            })) as any
+
+        const mockCreatedUser = {
+            _id: 'user_new_456',
+            name: 'Brand New User',
+            email: 'brandnew.user@example.com',
+            role: EUserRoles.SEEKER,
+            googleId: 'google-new-sub-456',
+            authProvider: 'google',
+            accountConfimation: { status: true },
+            toObject: jest.fn().mockReturnValue({
+                _id: 'user_new_456',
+                name: 'Brand New User',
+                email: 'brandnew.user@example.com',
+                role: EUserRoles.SEEKER
+            })
+        }
+
+        ;(query.findUserByGoogleId as jest.Mock).mockResolvedValue(null)
+        ;(query.findUserByEmail as jest.Mock).mockResolvedValue(null)
+        ;(query.createUser as jest.Mock).mockResolvedValue(mockCreatedUser)
+        ;(hashing.hashPassword as jest.Mock).mockResolvedValue('random_hashed_pass')
+        ;(jwt.generateToken as jest.Mock)
+            .mockReturnValueOnce('mock_access_jwt_new')
+            .mockReturnValueOnce('mock_refresh_jwt_new')
+        ;(tokenRepository.createToken as jest.Mock).mockResolvedValue({ token: 'mock_refresh_jwt_new' })
+
+        const result = await googleAuthCallbackService('valid_new_code')
+
+        expect(result.success).toBe(true)
+        expect(query.createUser).toHaveBeenCalledWith(
+            expect.objectContaining({
+                email: 'brandnew.user@example.com',
+                googleId: 'google-new-sub-456',
+                authProvider: 'google'
+            })
+        )
+        expect(result.accessToken).toBe('mock_access_jwt_new')
+        expect(result.redirectPath).toBe('/seeker')
+
+        global.fetch = originalFetch
     })
 })

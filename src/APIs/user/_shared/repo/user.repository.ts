@@ -14,6 +14,9 @@ export default {
             'accountConfimation.code': code
         })
     },
+    findUserByGoogleId: (googleId: string, select: string = '') => {
+        return userModel.findOne({ googleId }).select(select)
+    },
     createUser: (payload: IUser) => {
         return userModel.create(payload)
     }

@@ -58,5 +58,10 @@ export default {
     // Vapi AI Voice Interview
     VAPI_PRIVATE_KEY: process.env.VAPI_PRIVATE_KEY || '',
     VAPI_ASSISTANT_ID: process.env.VAPI_ASSISTANT_ID || 'b93d37b4-9e62-4d96-a916-ce0e3d357e73',
-    VAPI_WEBHOOK_SECRET: process.env.VAPI_WEBHOOK_SECRET || ''
+    VAPI_WEBHOOK_SECRET: process.env.VAPI_WEBHOOK_SECRET || '',
+
+    // Google OAuth 2.0
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
+    GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL || `${process.env.SERVER_URL || 'http://localhost:3000'}/v1/auth/google/callback`
 }

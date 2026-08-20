@@ -19,24 +19,28 @@ const userSchema = new mongoose.Schema<IUser>(
             _id: false,
             isoCode: {
                 type: String,
-                required: true
+                required: false,
+                default: 'US'
             },
             countryCode: {
                 type: String,
-                required: true
+                required: false,
+                default: '1'
             },
             internationalNumber: {
                 type: String,
-                required: true
+                required: false,
+                default: ''
             }
         },
         timezone: {
             type: String,
+            default: 'UTC',
             required: true
         },
         password: {
             type: String,
-            required: true,
+            required: false,
             select: false
         },
         role: {
@@ -44,6 +48,20 @@ const userSchema = new mongoose.Schema<IUser>(
             default: EUserRoles.SEEKER,
             enum: EUserRoles,
             required: true
+        },
+        googleId: {
+            type: String,
+            default: null,
+            sparse: true
+        },
+        authProvider: {
+            type: String,
+            enum: ['local', 'google'],
+            default: 'local'
+        },
+        profilePicture: {
+            type: String,
+            default: null
         },
         accountConfimation: {
             _id: false,

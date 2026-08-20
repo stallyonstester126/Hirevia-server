@@ -28,6 +28,10 @@ export const changePassword = async (
         throw new CustomError('User account not found', 404)
     }
 
+    if (!user.password) {
+        throw new CustomError('Account does not have a password set. Please use password reset.', 400)
+    }
+
     const isMatch = await hashing.comparePassword(currentPassword, user.password)
     if (!isMatch) {
         throw new CustomError('Current password is incorrect', 400)

@@ -5,7 +5,7 @@ import httpError from '../../../handlers/errorHandler/httpError'
 import { IConfirmRegistration, ILogin, ILoginRequest, IRegister, IRegisterRequest } from './types/authentication.interface'
 import { validateSchema } from '../../../utils/joi-validate'
 import { loginSchema, registerSchema } from './validation/validation.schema'
-import { accountConfirmationService, loginService, registrationService } from './authentication.service'
+import { accountConfirmationService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService } from './authentication.service'
 import { CustomError } from '../../../utils/errors'
 import asyncHandler from '../../../handlers/async'
 import { EApplicationEnvironment } from '../../../constant/application'
@@ -124,6 +124,63 @@ export default {
             httpResponse(response, request, 200, responseMessage.SUCCESS, null)
         } catch (error) {
             httpError(next, error, request, 500)
+        }
+    }),
+    googleAuthInitiate: asyncHandler(async (request: Request, response: Response) => {
+        try {
+            const { role, redirect } = request.query as { role?: string; redirect?: string }
+            const googleUrl = googleAuthInitiateService(role, redirect)
+            return response.redirect(googleUrl)
+        } catch (error: any) {
+            const errorMsg = error.message || 'Google OAuth initiation failed'
+            return response.redirect(`${config.FRONTEND_URL}/login?error=${encodeURIComponent(errorMsg)}`)
+        }
+    }),
+    googleAuthCallback: asyncHandler(async (request: Request, response: Response) => {
+        const { code, state, error, error_description } = request.query as {
+            code?: string
+            state?: string
+            error?: string
+            error_description?: string
+        }
+
+        if (error) {
+            const message = error_description || error || 'Google sign-in cancelled'
+            return response.redirect(`${config.FRONTEND_URL}/login?error=${encodeURIComponent(message)}`)
+        }
+
+        if (!code) {
+            return response.redirect(`${config.FRONTEND_URL}/login?error=${encodeURIComponent('Missing authorization code from Google')}`)
+        }
+
+        try {
+            const result = await googleAuthCallbackService(code, state)
+
+            const isProd =
+                config.ENV === EApplicationEnvironment.PRODUCTION ||
+                process.env.NODE_ENV === 'production'
+            const cookieOptions = {
+                path: '/',
+                sameSite: isProd ? ('none' as const) : ('lax' as const),
+                httpOnly: true,
+                secure: isProd
+            }
+
+            response
+                .cookie('accessToken', result.accessToken, {
+                    ...cookieOptions,
+                    maxAge: 1000 * config.TOKENS.ACCESS.EXPIRY
+                })
+                .cookie('refreshToken', result.refreshToken, {
+                    ...cookieOptions,
+                    maxAge: 1000 * config.TOKENS.REFRESH.EXPIRY
+                })
+
+            const destination = `${config.FRONTEND_URL}${result.redirectPath}`
+            return response.redirect(destination)
+        } catch (authError: any) {
+            const message = authError.message || 'Google authentication failed'
+            return response.redirect(`${config.FRONTEND_URL}/login?error=${encodeURIComponent(message)}`)
         }
     })
 }

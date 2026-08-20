@@ -154,6 +154,9 @@ export const loginService = async (payload: ILoginRequest) => {
     }
 
     //Validate password
+    if (!user.password) {
+        throw new CustomError(responseMessage.auth.INVALID_EMAIL_OR_PASSWORD, 400)
+    }
     const isValidPassword = await hashing.comparePassword(password, user.password)
     if (!isValidPassword) {
         throw new CustomError(responseMessage.auth.INVALID_EMAIL_OR_PASSWORD, 400)
@@ -186,5 +189,182 @@ export const loginService = async (payload: ILoginRequest) => {
         user: userObj,
         accessToken: accessToken,
         refreshToken: refreshToken
+    }
+}
+
+export const googleAuthInitiateService = (role?: string, redirectPath?: string) => {
+    if (!config.GOOGLE_CLIENT_ID || !config.GOOGLE_CLIENT_SECRET) {
+        throw new CustomError('Google OAuth is not configured on the server', 500)
+    }
+
+    const statePayload = {
+        role: role === EUserRoles.COMPANY ? EUserRoles.COMPANY : EUserRoles.SEEKER,
+        redirect: redirectPath || ''
+    }
+    const state = Buffer.from(JSON.stringify(statePayload)).toString('base64url')
+
+    const rootUrl = 'https://accounts.google.com/o/oauth2/v2/auth'
+    const options = {
+        redirect_uri: config.GOOGLE_CALLBACK_URL,
+        client_id: config.GOOGLE_CLIENT_ID,
+        access_type: 'offline',
+        response_type: 'code',
+        prompt: 'select_account',
+        scope: [
+            'https://www.googleapis.com/auth/userinfo.profile',
+            'https://www.googleapis.com/auth/userinfo.email',
+            'openid'
+        ].join(' '),
+        state
+    }
+    const qs = new URLSearchParams(options)
+    return `${rootUrl}?${qs.toString()}`
+}
+
+export const googleAuthCallbackService = async (codeParam: string, stateParam?: string) => {
+    if (!config.GOOGLE_CLIENT_ID || !config.GOOGLE_CLIENT_SECRET) {
+        throw new CustomError('Google OAuth is not configured on the server', 500)
+    }
+
+    let parsedState: { role?: string; redirect?: string } = {}
+    if (stateParam) {
+        try {
+            parsedState = JSON.parse(Buffer.from(stateParam, 'base64url').toString('utf-8'))
+        } catch (_) {
+            parsedState = {}
+        }
+    }
+
+    // 1. Exchange authorization code for tokens
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+            code: codeParam,
+            client_id: config.GOOGLE_CLIENT_ID,
+            client_secret: config.GOOGLE_CLIENT_SECRET,
+            redirect_uri: config.GOOGLE_CALLBACK_URL,
+            grant_type: 'authorization_code'
+        })
+    })
+
+    const tokenData = (await tokenResponse.json()) as any
+    if (!tokenResponse.ok || !tokenData.access_token) {
+        const errorDesc = tokenData.error_description || tokenData.error || 'Failed to exchange code with Google'
+        logger.error(`[GoogleAuth] Token exchange failed: ${errorDesc}`)
+        throw new CustomError(errorDesc, 400)
+    }
+
+    // 2. Fetch Google profile
+    const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    })
+    const googleUser = (await userResponse.json()) as any
+    if (!userResponse.ok || !googleUser.email) {
+        throw new CustomError('Failed to fetch user profile from Google', 400)
+    }
+    if (!googleUser.email_verified) {
+        throw new CustomError('Google email address is not verified', 400)
+    }
+
+    const email = googleUser.email.toLowerCase()
+    const googleId = googleUser.sub
+
+    // 3. Find existing user by googleId or email
+    let user = await query.findUserByGoogleId(googleId)
+    if (!user) {
+        user = await query.findUserByEmail(email)
+    }
+
+    if (user) {
+        if (user.isSuspended) {
+            throw new CustomError('Account suspended', 403)
+        }
+
+        if (!user.googleId) {
+            user.googleId = googleId
+        }
+        if (!user.authProvider || user.authProvider === 'local') {
+            user.authProvider = 'google'
+        }
+        if (!user.profilePicture && googleUser.picture) {
+            user.profilePicture = googleUser.picture
+        }
+        if (!user.accountConfimation?.status) {
+            user.accountConfimation.status = true
+            user.accountConfimation.timestamp = dayjs().utc().toDate()
+        }
+        user.lastLoginAt = dayjs().utc().toDate()
+        await user.save()
+    } else {
+        // 4. Create new user with Google identity
+        const targetRole =
+            parsedState.role && Object.values(EUserRoles).includes(parsedState.role as EUserRoles)
+                ? (parsedState.role as EUserRoles)
+                : EUserRoles.SEEKER
+
+        const randomPassword = await hashing.hashPassword(code.generateRandomId() + code.generateRandomId())
+        const newUserPayload: IUser = {
+            name: googleUser.name || googleUser.given_name || email.split('@')[0],
+            email,
+            phoneNumber: {
+                countryCode: '1',
+                isoCode: 'US',
+                internationalNumber: ''
+            },
+            timezone: 'UTC',
+            password: randomPassword,
+            role: targetRole,
+            googleId,
+            authProvider: 'google',
+            profilePicture: googleUser.picture || null,
+            accountConfimation: {
+                status: true,
+                token: code.generateRandomId(),
+                code: '000000',
+                timestamp: dayjs().utc().toDate()
+            },
+            passwordReset: {
+                token: null,
+                expiry: null,
+                lastResetAt: null
+            },
+            lastLoginAt: dayjs().utc().toDate(),
+            consent: true
+        }
+
+        user = await query.createUser(newUserPayload)
+    }
+
+    // 5. Generate tokens
+    const accessToken = jwt.generateToken({ userId: user._id }, config.TOKENS.ACCESS.SECRET, config.TOKENS.ACCESS.EXPIRY)
+    const refreshToken = jwt.generateToken({ userId: user._id }, config.TOKENS.REFRESH.SECRET, config.TOKENS.REFRESH.EXPIRY)
+
+    const token: IToken = {
+        token: refreshToken
+    }
+    await tokenRepository.createToken(token)
+
+    // 6. Determine redirect path
+    let redirectPath = '/seeker'
+    if (user.role === EUserRoles.COMPANY) {
+        redirectPath = '/company'
+    } else if (user.role === EUserRoles.ADMIN) {
+        redirectPath = '/admin'
+    }
+
+    if (parsedState.redirect && parsedState.redirect.startsWith('/')) {
+        redirectPath = parsedState.redirect
+    }
+
+    const userObj = user.toObject() as any
+    delete userObj.password
+
+    return {
+        success: true,
+        user: userObj,
+        accessToken,
+        refreshToken,
+        redirectPath
     }
 }

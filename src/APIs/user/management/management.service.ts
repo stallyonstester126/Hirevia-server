@@ -4,11 +4,11 @@ import userModel from '../_shared/models/user.model'
 
 export const changePassword = async (
     userId: string,
-    currentPassword: string,
-    newPassword: string
+    currentPassword?: string,
+    newPassword?: string
 ) => {
-    if (!currentPassword || !newPassword) {
-        throw new CustomError('Current password and new password are required', 400)
+    if (!newPassword) {
+        throw new CustomError('New password is required', 400)
     }
 
     if (newPassword.length < 8) {
@@ -28,13 +28,16 @@ export const changePassword = async (
         throw new CustomError('User account not found', 404)
     }
 
-    if (!user.password) {
-        throw new CustomError('Account does not have a password set. Please use password reset.', 400)
-    }
-
-    const isMatch = await hashing.comparePassword(currentPassword, user.password)
-    if (!isMatch) {
-        throw new CustomError('Current password is incorrect', 400)
+    // If local auth user with existing password, require and verify current password
+    const isGoogleUser = user.authProvider === 'google'
+    if (!isGoogleUser && user.password) {
+        if (!currentPassword) {
+            throw new CustomError('Current password is required', 400)
+        }
+        const isMatch = await hashing.comparePassword(currentPassword, user.password)
+        if (!isMatch) {
+            throw new CustomError('Current password is incorrect', 400)
+        }
     }
 
     const hashedNewPassword = await hashing.hashPassword(newPassword)

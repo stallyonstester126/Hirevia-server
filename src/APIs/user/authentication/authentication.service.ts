@@ -426,20 +426,29 @@ export const forgotPasswordService = async (payload: IForgotPasswordRequest) => 
 }
 
 export const resetPasswordService = async (payload: IResetPasswordRequest) => {
-    const { token, newPassword, code: providedCode } = payload
+    const { token, email, newPassword, code: providedCode } = payload
 
-    const user = await query.findUserByResetToken(token, '+password')
-    if (!user || !user.passwordReset || !user.passwordReset.token) {
-        throw new CustomError('Password reset link is invalid or has already been used. Please request a new one.', 400)
+    let user: any = null
+
+    if (token) {
+        user = await query.findUserByResetToken(token, '+password')
+    }
+
+    if (!user && email && providedCode) {
+        user = await query.findUserByResetCodeAndEmail(email.toLowerCase().trim(), providedCode.trim(), '+password')
+    }
+
+    if (!user || !user.passwordReset) {
+        throw new CustomError('Password reset link or verification code is invalid. Please request a new one.', 400)
     }
 
     // Check expiry
     if (user.passwordReset.expiry && user.passwordReset.expiry < Date.now()) {
-        throw new CustomError('Password reset link has expired. Please request a new one.', 400)
+        throw new CustomError('Password reset link or code has expired. Please request a new one.', 400)
     }
 
     // Check code if provided
-    if (providedCode && user.passwordReset.code && user.passwordReset.code !== providedCode) {
+    if (providedCode && user.passwordReset.code && user.passwordReset.code !== providedCode.trim()) {
         throw new CustomError('Invalid verification code provided.', 400)
     }
 

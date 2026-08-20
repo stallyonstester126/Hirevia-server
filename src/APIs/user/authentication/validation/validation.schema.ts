@@ -33,7 +33,8 @@ export const forgotPasswordSchema = joi.object({
 })
 
 export const resetPasswordSchema = joi.object({
-    token: joi.string().required().trim(),
+    token: joi.string().allow('', null).optional().trim(),
+    email: joi.string().email().allow('', null).optional().trim(),
     newPassword: joi
         .string()
         .min(8)

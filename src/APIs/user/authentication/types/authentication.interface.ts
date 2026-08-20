@@ -41,7 +41,8 @@ export interface IForgotPassword extends Request {
 }
 
 export interface IResetPasswordRequest {
-    token: string
+    token?: string
+    email?: string
     newPassword: string
     code?: string
 }

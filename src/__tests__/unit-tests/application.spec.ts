@@ -181,7 +181,14 @@ describe('Application Service', () => {
             ;(applicationRepository.countJobApps as jest.Mock).mockResolvedValue(1)
 
             const result = await getJobApplications(mockCompanyId, mockJobId, 1, 20)
-            expect(result.applications).toEqual([mockApplication])
+            expect(result.applications).toEqual([
+                {
+                    ...mockApplication,
+                    testInvite: null,
+                    interviewInvite: null,
+                    matchScore: null
+                }
+            ])
         })
 
         it('should throw 404 if job does not belong to company', async () => {
@@ -211,7 +218,12 @@ describe('Application Service', () => {
             ;(resumeRepository.findById as jest.Mock).mockResolvedValue({ _id: mockResumeId, originalFileName: 'cv.pdf', mimeType: 'application/pdf', storageKey: 'someKey' })
 
             const result = await getCompanyApplicationById(mockCompanyId, mockAppId)
-            expect(result.application).toEqual(mockAppObj)
+            expect(result.application).toEqual({
+                ...mockAppObj,
+                testInvite: null,
+                interviewInvite: null,
+                matchScore: null
+            })
             expect(result.seekerProfile).toEqual({ skills: ['JS'] })
         })
     })

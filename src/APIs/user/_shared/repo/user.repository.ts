@@ -20,6 +20,12 @@ export default {
     findUserByResetToken: (token: string, select: string = '') => {
         return userModel.findOne({ 'passwordReset.token': token }).select(select)
     },
+    findUserByResetCodeAndEmail: (email: string, code: string, select: string = '') => {
+        return userModel.findOne({
+            email,
+            'passwordReset.code': code
+        }).select(select)
+    },
     createUser: (payload: IUser) => {
         return userModel.create(payload)
     }

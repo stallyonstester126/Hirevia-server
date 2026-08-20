@@ -89,6 +89,10 @@ const userSchema = new mongoose.Schema<IUser>(
                 type: String,
                 default: null
             },
+            code: {
+                type: String,
+                default: null
+            },
             expiry: {
                 type: Number,
                 default: null

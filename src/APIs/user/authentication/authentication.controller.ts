@@ -2,10 +2,10 @@ import { NextFunction, Request, Response } from 'express'
 import httpResponse from '../../../handlers/httpResponse'
 import responseMessage from '../../../constant/responseMessage'
 import httpError from '../../../handlers/errorHandler/httpError'
-import { IConfirmRegistration, ILogin, ILoginRequest, IRegister, IRegisterRequest } from './types/authentication.interface'
+import { IConfirmRegistration, IForgotPassword, IForgotPasswordRequest, ILogin, ILoginRequest, IRegister, IRegisterRequest, IResetPassword, IResetPasswordRequest } from './types/authentication.interface'
 import { validateSchema } from '../../../utils/joi-validate'
-import { loginSchema, registerSchema } from './validation/validation.schema'
-import { accountConfirmationService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService } from './authentication.service'
+import { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } from './validation/validation.schema'
+import { accountConfirmationService, forgotPasswordService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService, resetPasswordService } from './authentication.service'
 import { CustomError } from '../../../utils/errors'
 import asyncHandler from '../../../handlers/async'
 import { EApplicationEnvironment } from '../../../constant/application'
@@ -181,6 +181,44 @@ export default {
         } catch (authError: any) {
             const message = authError.message || 'Google authentication failed'
             return response.redirect(`${config.FRONTEND_URL}/login?error=${encodeURIComponent(message)}`)
+        }
+    }),
+    forgotPassword: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
+        try {
+            const { body } = request as IForgotPassword
+
+            const { error, payload } = validateSchema<IForgotPasswordRequest>(forgotPasswordSchema, body)
+            if (error) {
+                return httpError(next, error, request, 422)
+            }
+
+            const result = await forgotPasswordService(payload)
+            httpResponse(response, request, 200, result.message, result)
+        } catch (error) {
+            if (error instanceof CustomError) {
+                httpError(next, error, request, error.statusCode)
+            } else {
+                httpError(next, error, request, 500)
+            }
+        }
+    }),
+    resetPassword: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
+        try {
+            const { body } = request as IResetPassword
+
+            const { error, payload } = validateSchema<IResetPasswordRequest>(resetPasswordSchema, body)
+            if (error) {
+                return httpError(next, error, request, 422)
+            }
+
+            const result = await resetPasswordService(payload)
+            httpResponse(response, request, 200, result.message, result)
+        } catch (error) {
+            if (error instanceof CustomError) {
+                httpError(next, error, request, error.statusCode)
+            } else {
+                httpError(next, error, request, 500)
+            }
         }
     })
 }

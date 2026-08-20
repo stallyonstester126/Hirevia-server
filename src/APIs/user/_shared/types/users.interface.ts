@@ -23,6 +23,7 @@ export interface IUser {
     }
     passwordReset: {
         token: string | null
+        code?: string | null
         expiry: number | null
         lastResetAt: Date | null
     }

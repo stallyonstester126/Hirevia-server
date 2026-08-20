@@ -1,4 +1,4 @@
-import { accountConfirmationService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService } from '../../APIs/user/authentication/authentication.service'
+import { accountConfirmationService, forgotPasswordService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService, resetPasswordService } from '../../APIs/user/authentication/authentication.service'
 import query from '../../APIs/user/_shared/repo/user.repository'
 import validate from '../../APIs/user/authentication/validation/validations'
 import emailService from '../../services/email'
@@ -325,3 +325,123 @@ describe('googleAuthServices', () => {
         global.fetch = originalFetch
     })
 })
+
+describe('forgotPasswordService', () => {
+    afterEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('should return generic success message if user is not found', async () => {
+        ;(query.findUserByEmail as jest.Mock).mockResolvedValue(null)
+
+        const result = await forgotPasswordService({ email: 'nonexistent@example.com' })
+
+        expect(result.success).toBe(true)
+        expect(result.message).toContain('If an account exists')
+        expect(emailService.sendEmail).not.toHaveBeenCalled()
+    })
+
+    it('should set reset token, code, and expiry, save user, and send password reset email', async () => {
+        const mockUser: any = {
+            _id: 'user_123',
+            name: 'Alice Candidate',
+            email: 'alice@example.com',
+            passwordReset: {},
+            save: jest.fn().mockResolvedValue(true)
+        }
+
+        ;(query.findUserByEmail as jest.Mock).mockResolvedValue(mockUser)
+        ;(code.generateRandomId as jest.Mock).mockReturnValue('random_token_part_')
+        ;(code.generateOTP as jest.Mock).mockReturnValue('654321')
+
+        const result = await forgotPasswordService({ email: 'alice@example.com' })
+
+        expect(result.success).toBe(true)
+        expect(mockUser.passwordReset.token).toBe('random_token_part_random_token_part_')
+        expect(mockUser.passwordReset.code).toBe('654321')
+        expect(mockUser.passwordReset.expiry).toBeGreaterThan(Date.now())
+        expect(mockUser.save).toHaveBeenCalled()
+        expect(emailService.sendEmail).toHaveBeenCalledWith(
+            ['alice@example.com'],
+            'Reset Your Hirevia Password',
+            expect.any(String),
+            expect.any(String)
+        )
+    })
+})
+
+describe('resetPasswordService', () => {
+    afterEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('should throw error if token is not found or invalid', async () => {
+        ;(query.findUserByResetToken as jest.Mock).mockResolvedValue(null)
+
+        await expect(
+            resetPasswordService({
+                token: 'invalid_token',
+                newPassword: 'NewPassword123!'
+            })
+        ).rejects.toThrow(CustomError)
+    })
+
+    it('should throw error if token is expired', async () => {
+        const expiredUser = {
+            _id: 'user_expired',
+            email: 'expired@example.com',
+            passwordReset: {
+                token: 'expired_token',
+                expiry: Date.now() - 10000
+            }
+        }
+
+        ;(query.findUserByResetToken as jest.Mock).mockResolvedValue(expiredUser)
+
+        await expect(
+            resetPasswordService({
+                token: 'expired_token',
+                newPassword: 'NewPassword123!'
+            })
+        ).rejects.toThrow(CustomError)
+    })
+
+    it('should successfully hash new password, clear reset fields, save user, and send success email', async () => {
+        const validUser = {
+            _id: 'user_valid',
+            name: 'Bob Candidate',
+            email: 'bob@example.com',
+            authProvider: 'google',
+            password: 'old_pass',
+            passwordReset: {
+                token: 'valid_reset_token',
+                code: '123456',
+                expiry: Date.now() + 3600000
+            },
+            save: jest.fn().mockResolvedValue(true)
+        }
+
+        ;(query.findUserByResetToken as jest.Mock).mockResolvedValue(validUser)
+        ;(hashing.hashPassword as jest.Mock).mockResolvedValue('new_hashed_password')
+
+        const result = await resetPasswordService({
+            token: 'valid_reset_token',
+            newPassword: 'NewPassword123!',
+            code: '123456'
+        })
+
+        expect(result.success).toBe(true)
+        expect(validUser.password).toBe('new_hashed_password')
+        expect(validUser.passwordReset.token).toBeNull()
+        expect(validUser.passwordReset.code).toBeNull()
+        expect(validUser.authProvider).toBe('local')
+        expect(validUser.save).toHaveBeenCalled()
+        expect(emailService.sendEmail).toHaveBeenCalledWith(
+            ['bob@example.com'],
+            'Your Hirevia Password Has Been Reset',
+            expect.any(String),
+            expect.any(String)
+        )
+    })
+})
+

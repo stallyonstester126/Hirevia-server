@@ -27,3 +27,20 @@ export const loginSchema = joi.object<ILoginRequest, true>({
         .trim()
         .required()
 })
+
+export const forgotPasswordSchema = joi.object({
+    email: joi.string().email().required().trim()
+})
+
+export const resetPasswordSchema = joi.object({
+    token: joi.string().required().trim(),
+    newPassword: joi
+        .string()
+        .min(8)
+        .max(24)
+        .regex(/^(?=.*[0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*\W)(?!.* ).{8,16}$/)
+        .trim()
+        .required(),
+    code: joi.string().allow('', null).optional().trim()
+})
+

@@ -323,3 +323,126 @@ export const getInterviewInviteEmailTemplate = (data: IInterviewInviteEmailData)
         text: textContent
     }
 }
+
+export interface IPasswordResetEmailData {
+    name: string
+    resetUrl: string
+    code?: string
+    expiresInHours?: number
+}
+
+/**
+ * Generate Password Reset Request Email (HTML & Plain Text)
+ */
+export const getPasswordResetEmailTemplate = (data: IPasswordResetEmailData) => {
+    const { name, resetUrl, code, expiresInHours = 1 } = data
+
+    const htmlContent = `
+        <h1 style="font-size: 20px; font-weight: 600; color: #0f172a; margin: 0 0 16px 0;">
+            Reset Your Hirevia Password 🔒
+        </h1>
+        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0;">
+            Hello <strong>${name}</strong>,
+        </p>
+        <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0;">
+            We received a request to reset the password for your Hirevia account. Click the button below to choose a new password. This link is valid for <strong>${expiresInHours} hour${expiresInHours > 1 ? 's' : ''}</strong>.
+        </p>
+
+        <!-- CTA Button -->
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 28px 0; width: 100%;">
+            <tr>
+                <td align="center">
+                    <a href="${resetUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 13px 32px; border-radius: 6px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);">
+                        Reset Password
+                    </a>
+                </td>
+            </tr>
+        </table>
+
+        ${
+            code
+                ? `
+        <!-- Verification Code Block -->
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 24px 0; width: 100%; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 16px;">
+            <tr>
+                <td align="center" style="font-size: 13px; color: #64748b;">
+                    <span style="display: block; margin-bottom: 6px; font-weight: 500;">Verification Code:</span>
+                    <span style="font-size: 22px; font-weight: 700; letter-spacing: 4px; color: #0f172a; font-family: monospace;">${code}</span>
+                </td>
+            </tr>
+        </table>
+        `
+                : ''
+        }
+
+        <!-- Direct Link Fallback -->
+        <p style="font-size: 13px; color: #64748b; margin: 0 0 6px 0;">
+            If the button above does not work, copy and paste this link into your web browser:
+        </p>
+        <p style="font-size: 12px; line-height: 1.4; margin: 0 0 24px 0; word-break: break-all; background-color: #f1f5f9; padding: 10px 12px; border-radius: 4px; border: 1px solid #e2e8f0;">
+            <a href="${resetUrl}" target="_blank" rel="noopener noreferrer" style="color: #2563eb; text-decoration: underline;">
+                ${resetUrl}
+            </a>
+        </p>
+
+        <!-- Security Note -->
+        <p style="font-size: 12px; color: #94a3b8; margin: 0; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+            <strong>Security Notice:</strong> If you did not request a password reset, please ignore this email. Your password will remain unchanged and your account is secure.
+        </p>
+    `
+
+    const textContent = `Hello ${name},\n\nWe received a request to reset your Hirevia password.\n\nPlease visit the link below to set a new password:\n${resetUrl}\n${code ? `\nVerification Code: ${code}\n` : ''}\nThis link expires in ${expiresInHours} hour.\n\nIf you did not request this, you can safely ignore this email.\n\n— The Hirevia Team`
+
+    return {
+        html: baseEmailLayout(htmlContent),
+        text: textContent
+    }
+}
+
+export interface IPasswordResetSuccessEmailData {
+    name: string
+    loginUrl: string
+}
+
+/**
+ * Generate Password Reset Success Confirmation Email (HTML & Plain Text)
+ */
+export const getPasswordResetSuccessEmailTemplate = (data: IPasswordResetSuccessEmailData) => {
+    const { name, loginUrl } = data
+
+    const htmlContent = `
+        <h1 style="font-size: 20px; font-weight: 600; color: #0f172a; margin: 0 0 16px 0;">
+            Password Reset Successful ✅
+        </h1>
+        <p style="font-size: 15px; color: #334155; margin: 0 0 16px 0;">
+            Hello <strong>${name}</strong>,
+        </p>
+        <p style="font-size: 15px; color: #334155; margin: 0 0 24px 0;">
+            Your Hirevia account password has been successfully reset. You can now log in using your new password.
+        </p>
+
+        <!-- CTA Button -->
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 0 0 28px 0; width: 100%;">
+            <tr>
+                <td align="center">
+                    <a href="${loginUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #2563eb; color: #ffffff; font-size: 15px; font-weight: 600; text-decoration: none; padding: 13px 32px; border-radius: 6px; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);">
+                        Sign In Now
+                    </a>
+                </td>
+            </tr>
+        </table>
+
+        <!-- Security Note -->
+        <p style="font-size: 12px; color: #94a3b8; margin: 0; line-height: 1.5; border-top: 1px solid #f1f5f9; padding-top: 16px;">
+            <strong>Security Notice:</strong> If you did not make this change, please immediately contact our support team to secure your account.
+        </p>
+    `
+
+    const textContent = `Hello ${name},\n\nYour Hirevia password has been successfully reset.\n\nYou can log in with your new password here:\n${loginUrl}\n\nIf you did not make this change, please contact support immediately.\n\n— The Hirevia Team`
+
+    return {
+        html: baseEmailLayout(htmlContent),
+        text: textContent
+    }
+}
+

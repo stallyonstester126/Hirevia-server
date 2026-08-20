@@ -31,3 +31,21 @@ export interface ILoginRequest {
 export interface ILogin extends Request {
     body: ILoginRequest
 }
+
+export interface IForgotPasswordRequest {
+    email: string
+}
+
+export interface IForgotPassword extends Request {
+    body: IForgotPasswordRequest
+}
+
+export interface IResetPasswordRequest {
+    token: string
+    newPassword: string
+    code?: string
+}
+
+export interface IResetPassword extends Request {
+    body: IResetPasswordRequest
+}

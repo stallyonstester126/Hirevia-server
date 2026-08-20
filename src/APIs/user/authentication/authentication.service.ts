@@ -1,6 +1,6 @@
 import responseMessage from '../../../constant/responseMessage'
 import parsers from '../../../utils/parsers'
-import { ILoginRequest, IRegisterRequest } from './types/authentication.interface'
+import { IForgotPasswordRequest, ILoginRequest, IRegisterRequest, IResetPasswordRequest } from './types/authentication.interface'
 import dateAndTime from '../../../utils/date-and-time'
 import { CustomError } from '../../../utils/errors'
 import query from '../_shared/repo/user.repository'
@@ -9,7 +9,7 @@ import code from '../../../utils/code'
 import { IUser } from '../_shared/types/users.interface'
 import { EUserRoles } from '../../../constant/users'
 import emailService from '../../../services/email'
-import { getConfirmationEmailTemplate, getWelcomeEmailTemplate } from '../../../services/emailTemplates'
+import { getConfirmationEmailTemplate, getPasswordResetEmailTemplate, getPasswordResetSuccessEmailTemplate, getWelcomeEmailTemplate } from '../../../services/emailTemplates'
 import logger from '../../../handlers/logger'
 import validate from './validation/validations'
 import dayjs from 'dayjs'
@@ -368,3 +368,116 @@ export const googleAuthCallbackService = async (codeParam: string, stateParam?: 
         redirectPath
     }
 }
+
+export const forgotPasswordService = async (payload: IForgotPasswordRequest) => {
+    const { email } = payload
+
+    const user = await query.findUserByEmail(email)
+    if (!user) {
+        // Return generic success message for privacy/security
+        return {
+            success: true,
+            message: 'If an account exists with this email, password reset instructions have been sent.'
+        }
+    }
+
+    // Generate secure reset token & 6-digit OTP code
+    const resetToken = code.generateRandomId() + code.generateRandomId()
+    const resetCode = code.generateOTP(6)
+    // Expiry: 1 hour from now
+    const expiry = dayjs().utc().add(1, 'hour').valueOf()
+
+    user.passwordReset = {
+        token: resetToken,
+        code: resetCode,
+        expiry,
+        lastResetAt: user.passwordReset?.lastResetAt || null
+    }
+
+    await user.save()
+
+    const resetURL = `${config.FRONTEND_URL}/reset-password?token=${resetToken}&code=${resetCode}`
+    const to = [email]
+    const subject = `Reset Your Hirevia Password`
+    const emailTemplate = getPasswordResetEmailTemplate({
+        name: user.name,
+        resetUrl: resetURL,
+        code: resetCode,
+        expiresInHours: 1
+    })
+
+    console.log(`\n======================================================`)
+    console.log(`[AUTH] Password Reset Requested: ${email}`)
+    console.log(`[AUTH] Reset Code (OTP): ${resetCode}`)
+    console.log(`[AUTH] Reset URL: ${resetURL}`)
+    console.log(`======================================================\n`)
+
+    logger.info(`Password Reset URL: ${resetURL}`)
+    emailService.sendEmail(to, subject, emailTemplate.text, emailTemplate.html).catch((error) => {
+        logger.error('Error sending password reset email', {
+            meta: error
+        })
+    })
+
+    return {
+        success: true,
+        message: 'Password reset instructions have been sent to your email.'
+    }
+}
+
+export const resetPasswordService = async (payload: IResetPasswordRequest) => {
+    const { token, newPassword, code: providedCode } = payload
+
+    const user = await query.findUserByResetToken(token, '+password')
+    if (!user || !user.passwordReset || !user.passwordReset.token) {
+        throw new CustomError('Password reset link is invalid or has already been used. Please request a new one.', 400)
+    }
+
+    // Check expiry
+    if (user.passwordReset.expiry && user.passwordReset.expiry < Date.now()) {
+        throw new CustomError('Password reset link has expired. Please request a new one.', 400)
+    }
+
+    // Check code if provided
+    if (providedCode && user.passwordReset.code && user.passwordReset.code !== providedCode) {
+        throw new CustomError('Invalid verification code provided.', 400)
+    }
+
+    // Hash new password
+    const hashedPassword = await hashing.hashPassword(newPassword)
+
+    user.password = hashedPassword
+    user.passwordReset = {
+        token: null,
+        code: null,
+        expiry: null,
+        lastResetAt: dayjs().utc().toDate()
+    }
+
+    // If account was created with Google without password before, allow standard login now
+    if (user.authProvider === 'google') {
+        user.authProvider = 'local'
+    }
+
+    await user.save()
+
+    // Send confirmation email
+    const to = [user.email]
+    const subject = `Your Hirevia Password Has Been Reset`
+    const successTemplate = getPasswordResetSuccessEmailTemplate({
+        name: user.name,
+        loginUrl: `${config.FRONTEND_URL}/login`
+    })
+
+    emailService.sendEmail(to, subject, successTemplate.text, successTemplate.html).catch((error) => {
+        logger.error('Error sending password reset success email', {
+            meta: error
+        })
+    })
+
+    return {
+        success: true,
+        message: 'Password has been reset successfully! You can now log in with your new password.'
+    }
+}
+

@@ -17,6 +17,9 @@ export default {
     findUserByGoogleId: (googleId: string, select: string = '') => {
         return userModel.findOne({ googleId }).select(select)
     },
+    findUserByResetToken: (token: string, select: string = '') => {
+        return userModel.findOne({ 'passwordReset.token': token }).select(select)
+    },
     createUser: (payload: IUser) => {
         return userModel.create(payload)
     }

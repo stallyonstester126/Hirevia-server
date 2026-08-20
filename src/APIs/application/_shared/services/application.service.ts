@@ -154,8 +154,26 @@ export const getJobApplications = async (
         filters.status = status
     }
 
-    const applications = await applicationRepository.findJobApps(jobId, filters, page, limit)
+    const rawApplications = await applicationRepository.findJobApps(jobId, filters, page, limit)
     const total = await applicationRepository.countJobApps(jobId, filters)
+
+    const applications = await Promise.all(
+        rawApplications.map(async (appDoc) => {
+            const app = typeof (appDoc as any).toObject === 'function' ? (appDoc as any).toObject() : { ...appDoc }
+            const appId = app._id ? app._id.toString() : ''
+            const [testInvite, interviewInvite, matchScore] = await Promise.all([
+                getTestInviteByApplicationId(appId).catch(() => null),
+                getInterviewInviteByApplicationId(appId).catch(() => null),
+                jobMatchScoreRepository.findByApplicationId(appId).catch(() => null)
+            ])
+            return {
+                ...app,
+                testInvite: testInvite || null,
+                interviewInvite: interviewInvite || null,
+                matchScore: matchScore || null
+            }
+        })
+    )
 
     return {
         applications,
@@ -201,13 +219,27 @@ export const getCompanyApplicationById = async (companyId: string, applicationId
         ? (seekerProfileDoc as any).toObject()
         : seekerProfileDoc
 
+    const [testInvite, interviewInvite, matchScore] = await Promise.all([
+        getTestInviteByApplicationId(applicationId).catch(() => null),
+        getInterviewInviteByApplicationId(applicationId).catch(() => null),
+        jobMatchScoreRepository.findByApplicationId(applicationId).catch(() => null)
+    ])
+
     const appObj = typeof (application as any).toObject === 'function'
         ? (application as any).toObject()
         : application
 
     return {
-        application: appObj,
+        application: {
+            ...appObj,
+            testInvite,
+            interviewInvite,
+            matchScore
+        },
         seekerProfile,
+        testInvite,
+        interviewInvite,
+        matchScore
     }
 }
 

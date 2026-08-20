@@ -12,6 +12,8 @@ router.route('/logout').put(authenticationController.logout)
 // Password Recovery routes
 router.route('/forgot-password').post(authenticationController.forgotPassword)
 router.route('/auth/forgot-password').post(authenticationController.forgotPassword)
+router.route('/verify-reset-code').post(authenticationController.verifyResetCode)
+router.route('/auth/verify-reset-code').post(authenticationController.verifyResetCode)
 router.route('/reset-password').post(authenticationController.resetPassword)
 router.route('/auth/reset-password').post(authenticationController.resetPassword)
 

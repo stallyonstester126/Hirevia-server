@@ -1,4 +1,4 @@
-import { accountConfirmationService, forgotPasswordService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService, resetPasswordService } from '../../APIs/user/authentication/authentication.service'
+import { accountConfirmationService, forgotPasswordService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService, resetPasswordService, verifyResetCodeService } from '../../APIs/user/authentication/authentication.service'
 import query from '../../APIs/user/_shared/repo/user.repository'
 import validate from '../../APIs/user/authentication/validation/validations'
 import emailService from '../../services/email'
@@ -370,6 +370,44 @@ describe('forgotPasswordService', () => {
     })
 })
 
+describe('verifyResetCodeService', () => {
+    afterEach(() => {
+        jest.clearAllMocks()
+    })
+
+    it('should throw error if code is missing or not 6 digits', async () => {
+        await expect(verifyResetCodeService({ code: '123' })).rejects.toThrow(CustomError)
+    })
+
+    it('should throw error if code does not match any active user reset', async () => {
+        ;(query.findUserByResetCode as jest.Mock).mockResolvedValue(null)
+        await expect(verifyResetCodeService({ code: '654321' })).rejects.toThrow(CustomError)
+    })
+
+    it('should throw error if reset code is expired', async () => {
+        const expiredUser = {
+            passwordReset: {
+                code: '654321',
+                expiry: Date.now() - 5000
+            }
+        }
+        ;(query.findUserByResetCode as jest.Mock).mockResolvedValue(expiredUser)
+        await expect(verifyResetCodeService({ code: '654321' })).rejects.toThrow(CustomError)
+    })
+
+    it('should return success if reset code is valid and active', async () => {
+        const validUser = {
+            passwordReset: {
+                code: '654321',
+                expiry: Date.now() + 3600000
+            }
+        }
+        ;(query.findUserByResetCode as jest.Mock).mockResolvedValue(validUser)
+        const result = await verifyResetCodeService({ code: '654321' })
+        expect(result.success).toBe(true)
+    })
+})
+
 describe('resetPasswordService', () => {
     afterEach(() => {
         jest.clearAllMocks()
@@ -442,6 +480,35 @@ describe('resetPasswordService', () => {
             expect.any(String),
             expect.any(String)
         )
+    })
+
+    it('should successfully reset password when provided only 6-digit OTP code', async () => {
+        const validUser = {
+            _id: 'user_otp_only',
+            name: 'Sam Candidate',
+            email: 'sam@example.com',
+            authProvider: 'local',
+            password: 'old_pass',
+            passwordReset: {
+                token: null,
+                code: '654321',
+                expiry: Date.now() + 3600000
+            },
+            save: jest.fn().mockResolvedValue(true)
+        }
+
+        ;(query.findUserByResetCode as jest.Mock).mockResolvedValue(validUser)
+        ;(hashing.hashPassword as jest.Mock).mockResolvedValue('new_hashed_password_2')
+
+        const result = await resetPasswordService({
+            code: '654321',
+            newPassword: 'NewPassword123!'
+        })
+
+        expect(result.success).toBe(true)
+        expect(validUser.password).toBe('new_hashed_password_2')
+        expect(validUser.passwordReset.code).toBeNull()
+        expect(validUser.save).toHaveBeenCalled()
     })
 })
 

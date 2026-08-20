@@ -425,6 +425,28 @@ export const forgotPasswordService = async (payload: IForgotPasswordRequest) => 
     }
 }
 
+export const verifyResetCodeService = async (payload: { code: string }) => {
+    const { code: providedCode } = payload
+    if (!providedCode || providedCode.trim().length !== 6) {
+        throw new CustomError('Verification code must be 6 digits.', 400)
+    }
+
+    const user = await query.findUserByResetCode(providedCode.trim())
+    if (!user || !user.passwordReset || !user.passwordReset.code) {
+        throw new CustomError('Invalid verification code. Please check your email or request a new code.', 400)
+    }
+
+    // Check expiry
+    if (user.passwordReset.expiry && user.passwordReset.expiry < Date.now()) {
+        throw new CustomError('Verification code has expired. Please request a new reset code.', 400)
+    }
+
+    return {
+        success: true,
+        message: 'Verification code is valid.'
+    }
+}
+
 export const resetPasswordService = async (payload: IResetPasswordRequest) => {
     const { token, email, newPassword, code: providedCode } = payload
 
@@ -434,17 +456,21 @@ export const resetPasswordService = async (payload: IResetPasswordRequest) => {
         user = await query.findUserByResetToken(token, '+password')
     }
 
+    if (!user && providedCode) {
+        user = await query.findUserByResetCode(providedCode.trim(), '+password')
+    }
+
     if (!user && email && providedCode) {
         user = await query.findUserByResetCodeAndEmail(email.toLowerCase().trim(), providedCode.trim(), '+password')
     }
 
     if (!user || !user.passwordReset) {
-        throw new CustomError('Password reset link or verification code is invalid. Please request a new one.', 400)
+        throw new CustomError('Invalid verification code or reset link. Please request a new one.', 400)
     }
 
     // Check expiry
     if (user.passwordReset.expiry && user.passwordReset.expiry < Date.now()) {
-        throw new CustomError('Password reset link or code has expired. Please request a new one.', 400)
+        throw new CustomError('Verification code or reset link has expired. Please request a new one.', 400)
     }
 
     // Check code if provided

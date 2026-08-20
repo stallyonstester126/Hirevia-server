@@ -20,6 +20,9 @@ export default {
     findUserByResetToken: (token: string, select: string = '') => {
         return userModel.findOne({ 'passwordReset.token': token }).select(select)
     },
+    findUserByResetCode: (code: string, select: string = '') => {
+        return userModel.findOne({ 'passwordReset.code': code }).select(select)
+    },
     findUserByResetCodeAndEmail: (email: string, code: string, select: string = '') => {
         return userModel.findOne({
             email,

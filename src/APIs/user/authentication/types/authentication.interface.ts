@@ -40,6 +40,14 @@ export interface IForgotPassword extends Request {
     body: IForgotPasswordRequest
 }
 
+export interface IVerifyResetCodeRequest {
+    code: string
+}
+
+export interface IVerifyResetCode extends Request {
+    body: IVerifyResetCodeRequest
+}
+
 export interface IResetPasswordRequest {
     token?: string
     email?: string

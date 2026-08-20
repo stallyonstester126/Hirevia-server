@@ -2,10 +2,10 @@ import { NextFunction, Request, Response } from 'express'
 import httpResponse from '../../../handlers/httpResponse'
 import responseMessage from '../../../constant/responseMessage'
 import httpError from '../../../handlers/errorHandler/httpError'
-import { IConfirmRegistration, IForgotPassword, IForgotPasswordRequest, ILogin, ILoginRequest, IRegister, IRegisterRequest, IResetPassword, IResetPasswordRequest } from './types/authentication.interface'
+import { IConfirmRegistration, IForgotPassword, IForgotPasswordRequest, ILogin, ILoginRequest, IRegister, IRegisterRequest, IResetPassword, IResetPasswordRequest, IVerifyResetCode, IVerifyResetCodeRequest } from './types/authentication.interface'
 import { validateSchema } from '../../../utils/joi-validate'
-import { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema } from './validation/validation.schema'
-import { accountConfirmationService, forgotPasswordService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService, resetPasswordService } from './authentication.service'
+import { forgotPasswordSchema, loginSchema, registerSchema, resetPasswordSchema, verifyResetCodeSchema } from './validation/validation.schema'
+import { accountConfirmationService, forgotPasswordService, googleAuthCallbackService, googleAuthInitiateService, loginService, registrationService, resetPasswordService, verifyResetCodeService } from './authentication.service'
 import { CustomError } from '../../../utils/errors'
 import asyncHandler from '../../../handlers/async'
 import { EApplicationEnvironment } from '../../../constant/application'
@@ -193,6 +193,25 @@ export default {
             }
 
             const result = await forgotPasswordService(payload)
+            httpResponse(response, request, 200, result.message, result)
+        } catch (error) {
+            if (error instanceof CustomError) {
+                httpError(next, error, request, error.statusCode)
+            } else {
+                httpError(next, error, request, 500)
+            }
+        }
+    }),
+    verifyResetCode: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
+        try {
+            const { body } = request as IVerifyResetCode
+
+            const { error, payload } = validateSchema<IVerifyResetCodeRequest>(verifyResetCodeSchema, body)
+            if (error) {
+                return httpError(next, error, request, 422)
+            }
+
+            const result = await verifyResetCodeService(payload)
             httpResponse(response, request, 200, result.message, result)
         } catch (error) {
             if (error instanceof CustomError) {

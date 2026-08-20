@@ -32,6 +32,10 @@ export const forgotPasswordSchema = joi.object({
     email: joi.string().email().required().trim()
 })
 
+export const verifyResetCodeSchema = joi.object({
+    code: joi.string().length(6).required().trim()
+})
+
 export const resetPasswordSchema = joi.object({
     token: joi.string().allow('', null).optional().trim(),
     email: joi.string().email().allow('', null).optional().trim(),

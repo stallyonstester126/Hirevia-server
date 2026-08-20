@@ -12,6 +12,10 @@ router
     .get(rateLimiter, authenticate, authorize(EUserRoles.SEEKER), seekerApplicationsController.getApplications)
 
 router
+    .route('/check/:jobId')
+    .get(rateLimiter, authenticate, authorize(EUserRoles.SEEKER), seekerApplicationsController.checkStatus)
+
+router
     .route('/:applicationId')
     .get(rateLimiter, authenticate, authorize(EUserRoles.SEEKER), seekerApplicationsController.getApplicationById)
 

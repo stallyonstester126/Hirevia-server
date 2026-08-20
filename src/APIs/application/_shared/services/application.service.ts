@@ -64,6 +64,18 @@ export const applyToJob = async (seekerId: string, jobId: string, resumeId: stri
 }
 
 
+export const checkSeekerJobApplication = async (seekerId: string, jobId: string) => {
+    const application = await applicationRepository.findByJobAndSeeker(jobId, seekerId)
+    return {
+        hasApplied: !!application,
+        application: application ? {
+            _id: application._id,
+            status: application.status,
+            appliedAt: application.appliedAt
+        } : null
+    }
+}
+
 export const getSeekerApplications = async (seekerId: string, page: number, limit: number) => {
     const applications = await applicationRepository.findSeekerApps(seekerId, page, limit)
     const total = await applicationRepository.countSeekerApps(seekerId)

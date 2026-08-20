@@ -17,6 +17,10 @@ router
     .get(rateLimiter, marketplaceController.getJobById)
 
 router
+    .route('/:jobId/application-status')
+    .get(rateLimiter, authenticate, authorize(EUserRoles.SEEKER), seekerApplicationsController.checkStatus)
+
+router
     .route('/:jobId/apply')
     .post(rateLimiter, authenticate, authorize(EUserRoles.SEEKER), seekerApplicationsController.apply)
 

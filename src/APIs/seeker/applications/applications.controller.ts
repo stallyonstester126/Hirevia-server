@@ -84,5 +84,21 @@ export default {
                 httpError(next, error, request, 500)
             }
         }
+    }),
+    checkStatus: asyncHandler(async (request: Request, response: Response, next: NextFunction) => {
+        try {
+            const req = request as IAuthenticateRequest
+            const seekerId = (req.authenticatedUser as any)._id || (req.authenticatedUser as any).id
+            const { jobId } = req.params
+
+            const result = await applicationService.checkSeekerJobApplication(seekerId, jobId)
+            httpResponse(response, request, 200, responseMessage.SUCCESS, result)
+        } catch (error) {
+            if (error instanceof CustomError) {
+                httpError(next, error, request, error.statusCode)
+            } else {
+                httpError(next, error, request, 500)
+            }
+        }
     })
 }

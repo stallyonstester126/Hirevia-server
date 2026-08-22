@@ -9,6 +9,7 @@ import cookieParser from 'cookie-parser'
 import config from './config/config'
 import { IncomingMessage } from 'http'
 
+// Express application entry and middleware configuration
 const app: Application = express()
 
 // Allowed origins for CORS (supports comma-separated origins from env)
